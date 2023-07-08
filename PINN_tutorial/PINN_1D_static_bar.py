@@ -43,11 +43,11 @@ def get_derivative(y,x):
     
     dydx = grad(y,x,torch.ones(x.size()[0],1),
                 create_graph=True,
-                retain_graph=True)
+                retain_graph=True)[0]
     
     return dydx
 
-def f(model,x,EA,p):
+def f_calc(model,x,EA,p):
     """
     f=d/dx(EA*du/dx) + p is calculated
     """
@@ -59,29 +59,43 @@ def f(model,x,EA,p):
     
     return f
 
-#Calculate the loss function: MSE_f
-#Example values are inserted into the model
+#Training
+model = buildModel(1,10,1)
 
-#model = buildModel(1,10,1)
 x = torch.linspace(0,1,10,requires_grad=True).view(-1,1)
-EA = lambda x: 1+ 0*x
-p = lambda x: 4 * math.pi**2 * torch.sin(2*math.pi*x)
-
-f = f(model,x,EA,p)
-MSE_f = torch.sum(f**2)
-
-#Calculate the cost function using MSE_b
-
-#model = buildModel(1,10,1)
-u0 = 10
+u0 = 0
 u1 = 0
 
-u0_pred = model(torch.tensor([0.]))
-u1_pred = model(torch.tensor([1.]))
+num_epochs = 50
+learning_rate = 0.01
+optimiser = torch.optim.LBFGS(model.parameters(),lr=learning_rate)
 
-MSE_b = (u0_pred-u0)**2 + (u1_pred-u1)**2
-
-
+for epoch in range(num_epochs):
+    
+    def closure():
+        u0_pred = model(torch.tensor([0.]))
+        u1_pred = model(torch.tensor([1.]))
+        
+        #compute loss
+        EA = lambda x: 1+ 0*x
+        p = lambda x: 4 * math.pi**2 * torch.sin(2*math.pi*x)
+        f = f_calc(model,x,EA,p)
+        MSE_f = torch.sum(f**2)
+        MSE_b = (u0_pred-u0)**2 + (u1_pred-u1)**2
+        loss = MSE_f + MSE_b
+        optimiser.zero_grad()
+        loss.backward()
+        
+        #print info
+        if (epoch+1)%10 == 0:
+            print(f'epoch: {epoch+1}, loss = {loss.item():.4f}')
+        
+        return loss
+    
+    #update
+    optimiser.step(closure)
+    
+    
 
 
 
