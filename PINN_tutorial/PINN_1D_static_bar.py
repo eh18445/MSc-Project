@@ -9,6 +9,8 @@ import torch
 from torch.autograd import grad
 import torch.nn as nn
 import math
+import matplotlib.pyplot as plt
+import numpy as np
 
 #Create neural network to predict displacement u(x)
 
@@ -66,9 +68,11 @@ x = torch.linspace(0,1,10,requires_grad=True).view(-1,1)
 u0 = 0
 u1 = 0
 
-num_epochs = 50
+num_epochs = 200
 learning_rate = 0.01
 optimiser = torch.optim.LBFGS(model.parameters(),lr=learning_rate)
+
+cost = []
 
 for epoch in range(num_epochs):
     
@@ -86,16 +90,41 @@ for epoch in range(num_epochs):
         optimiser.zero_grad()
         loss.backward()
         
-        #print info
-        if (epoch+1)%10 == 0:
-            print(f'epoch: {epoch+1}, loss = {loss.item():.4f}')
-        
         return loss
     
     #update
+    loss = closure()
+    cost.append(loss.item())
     optimiser.step(closure)
-    
-    
+    #print info
+    if (epoch+1)%10 == 0:
+        print(f'epoch: {epoch+1}, loss = {loss.item():.4f}')
+        
+#x vs u prediction
+x = np.linspace(0,1,22)
+
+u_actual = np.sin(2*np.pi*x)
+
+u_prediction = []
+for i in range(len(x)):
+    u_pred = model(torch.tensor([float(x[i])]))
+    u_prediction.append(u_pred.item())
+
+plt.scatter(x,u_prediction,label='prediction')
+plt.plot(x,u_actual,label='analytic')
+plt.xlabel('x')
+plt.ylabel('u(x)')
+plt.legend()
+plt.show()
+  
+#Epochs vs Cost    
+epochs = np.arange(num_epochs)
+cost = np.log10(cost)
+
+plt.plot(epochs,cost)
+plt.xlabel('Epochs')
+plt.ylabel('Cost function (log)')
+plt.show()
 
 
 
