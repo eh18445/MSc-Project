@@ -9,6 +9,7 @@ import torch
 from torch.autograd import grad
 import numpy as np
 import torch.nn as nn
+from scipy.stats import qmc
 
 def get_derivative(y,x,n):
     """
@@ -29,14 +30,33 @@ class PINN(nn.Module):
     def __init__(self,input_dim,hidden_dim,output_dim):
         super(PINN,self).__init__()
             
-        #the neural network layers go here
+        self.l1 = nn.Linear(input_dim,hidden_dim)
+        self.l2 = nn.Linear(hidden_dim,hidden_dim)
+        self.l3 = nn.Linear(hidden_dim,output_dim)
+        self.tanh = nn.Tanh()
 
-    def forward(self,x):
-        #x is input vector
+    def u_nn(self,t,x):
+        """
+        Neural Network approximating u
+        """
         
-        #neural network goes here    
+        out_x = self.tanh(self.l1(x))
+        out_x = self.tanh(self.l2(out_x))
+        out_x = self.tanh(self.l2(out_x))
+        out_x = self.tanh(self.l2(out_x))
+        out_x = self.tanh(self.l3(out_x))
         
-        return
+        out_t = self.tanh(self.l1(t))
+        out_t = self.tanh(self.l2(out_t))
+        out_t = self.tanh(self.l2(out_t))
+        out_t = self.tanh(self.l2(out_t))
+        out_t = self.tanh(self.l3(out_t))
+        
+        u = torch.cat((out_x,out_t),1)
+        
+        print(u)
+        
+        return u
 
     def f_nn(self,t,x):
         """
@@ -59,7 +79,7 @@ class PINN(nn.Module):
 
     def source_term(self,t,x):
         """
-        returns the source term s according to:
+        returns the manufactured solution s according to:
         s = ku/sigma**2 + u(x-p)/sigma**2 * [c*dp/dt - (x-p)/sigma**2 * (k+u*dk/du)]
         """
     
@@ -77,24 +97,51 @@ class PINN(nn.Module):
     
         return s
 
-    def cost_function(self,tO,xO,t_lb,x_lb,t_ub,x_ub,t_f,x_f,uO):
+    def cost_function(self,t0,x0,t_lb,x_lb,t_ub,x_ub,t_f,x_f,u0):
         """
         Calculates value of the cost function
         C = MSE_O + MSE_b + MSE_f
         """
     
-        uO_pred = self.u_nn(tO,xO)
+        u0_pred = self.u_nn(t0,x0)
         u_lb_pred = self.u_nn(t_lb,x_lb)
         u_x_lb_pred = get_derivative(u_lb_pred,x_lb,1)
         u_ub_pred = self.u_nn(t_ub,x_ub)
         u_x_ub_pred = get_derivative(u_ub_pred,x_ub,1)
         f_pred = self.f_nn(t_f,x_f)
-        mse_O = torch.mean((uO-uO_pred)**2)
+        #enforces the initial conditon
+        mse_0 = torch.mean((u0-u0_pred)**2)
+        #enforces Neumann boundary conditions
         mse_b = torch.mean(u_x_lb_pred**2) + torch.mean(u_x_ub_pred**2)
+        #enforces governing equations
         mse_f = torch.mean((f_pred)**2)
     
-        return mse_O, mse_b, mse_f
+        return mse_0, mse_b, mse_f
 
+model = PINN(1,10,1)
 
+#x and t range
+x = torch.linspace(0,1,10,requires_grad=True).view(-1,1)
+t = torch.linspace(0,0.5,10,requires_grad=True).view(-1,1)
 
+print(x,t)
 
+#collocation samples
+N_f = 100
+sampler = qmc.LatinHypercube(d=N_f)
+collocation = sampler.random(n=1)[0]
+print(collocation)
+
+#hyperparameters
+learning_rate = 0.01
+optimiser1 = torch.optim.Adam(model.parameters(),lr=learning_rate)
+optimiser2 = torch.optim.LBFGS(model.parameters(),lr=learning_rate)
+
+#training
+num_epochs = 5000
+for epoch in range(num_epochs):
+    
+    model.u_nn(t,x)
+    
+    if (epoch+1) % 100 == 0:
+        print(epoch+1)
