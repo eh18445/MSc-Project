@@ -11,9 +11,9 @@ Created on Sun Jul 16 14:23:56 2023
 from ase.build import molecule
 from torch_dftd.torch_dftd3_calculator import TorchDFTD3Calculator
 
-atoms = molecule("CH3CH2OCH3")
+atoms = molecule("H2")
 # device="cuda:0" for fast GPU computation.
-calc = TorchDFTD3Calculator(atoms=atoms,device="cpu",damping="bj")
+calc = TorchDFTD3Calculator(atoms=atoms,device="cuda:0",damping="bj")
 
 energy = atoms.get_potential_energy()
 forces = atoms.get_forces()

@@ -171,7 +171,7 @@ def sampling(params, n_points, linearSampling=False):
     # Sampling from a 4d space: 3d variable (x,y,z) and 1d parameter (R) space
     xR = params['xR']; xL = params['xL']; yR = params['yR'];
     yL = params['yL']; zR = params['zR']; zL = params['zL']; 
-    cutOff=params['cutOff']
+    cutOff = params['cutOff']
     
     if linearSampling == True:
         x = torch.linspace(xL,xR,n_points,requires_grad=False)
@@ -269,7 +269,7 @@ class NN_atom(nn.Module):
         E = self.Lin_Eout(e)
         
         ## ATOMIC Layer: Radial part and physics-based activation
-        fi_r1,  fi_r2  = self.atomicUnit(x,y,z, R)        
+        fi_r1,  fi_r2  = self.atomicUnit(x,y,z,R)        
         fi_r1m, fi_r2m = self.atomicUnit(-x,y,z,R)        
         ## LCAO SOLUTION
         N_LCAO = self.lcao_solution(fi_r1, fi_r2)
@@ -286,6 +286,10 @@ class NN_atom(nn.Module):
         return Nout, E
 
     def atomicUnit(self,x,y,z,R):
+        """
+        Takes the 2 inputs r and R.
+        Returns the hydrogen atomic s-orbitals for each ion.
+        """
         x1 = x - R; 
         y1 = y- self.Ry; z1 = z - self.Rz     # Cartesian Translation & Scaling:    
         rVec1=torch.cat((x1,y1,z1),1)
@@ -298,9 +302,13 @@ class NN_atom(nn.Module):
         r2 = self.toR(rVec2);         fi_r2 = self.actAO_s(r2);  
         return fi_r1, fi_r2
 
-    def lcao_solution(self,fi_r1, fi_r2,  ):
-        ## LCAO solution: Linear combination
-        N_LCAO= (fi_r1 + self.P* fi_r2)        
+    def lcao_solution(self,fi_r1, fi_r2):
+        """
+        LCAO solution: Linear combination
+        Psi_LCAO = fi_r1 +/- fi_r2
+        Use + version for symmetric which we do if self.P=1
+        """
+        N_LCAO = (fi_r1 + self.P* fi_r2)        
         return N_LCAO
     
     def base(self,fi_r1,fi_r2):
@@ -361,27 +369,29 @@ class NN_atom(nn.Module):
         # Ltriv = 1/(psi.pow(2)).mean()* lam_tr ;    Ltot = Ltot + Ltriv 
         return Ltot, LossPDE, Lbc, E
     
-def train(params, loadWeights=False, freezeUnits=False):
-    lr = params['lr']; 
-    model = NN_atom(params);     # modelBest=copy.deepcopy(model)
-
-    optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=0)
-    print('train with Adam')   
-    # optimizer = optim.SGD(model.parameters(), lr=lr, momentum=0.5)
-    # print('train with SGD')
+def train(params, loadWeights=False, freezeUnits=False, optimiser='Adam'):
+    lr = params['lr'] 
+    model = NN_atom(params)     # modelBest=copy.deepcopy(model)
+    
+    if optimiser == 'Adam':
+        optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=0)
+        print('train with Adam')   
+    elif optimiser == 'SGD':
+        optimizer = optim.SGD(model.parameters(), lr=lr, momentum=0.5)
+        print('train with SGD')
 
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=params['sc_step'], gamma=params['sc_decay'])    
     Llim =  10 ; optEpoch=0    
 
-    epochs=params['epochs'] # For Adam 
+    epochs = params['epochs'] # For Adam 
     total_epochs = epochs
     # total_epochs = params['epochs_LB'] + epochs
     Ltot_h = np.zeros([total_epochs,1]); Lpde_h = np.zeros([total_epochs,1])
-    Lbc_h= np.zeros([total_epochs,1]);   E_h = np.zeros([total_epochs,1]); 
+    Lbc_h= np.zeros([total_epochs,1]);   E_h = np.zeros([total_epochs,1])
     # Ltr_h = np.zeros([total_epochs,1]); Linv_h= np.zeros([total_epochs,1])
     
     ## LOADING pre-trained model if PATH file exists and loadWeights=True
-    if path.exists(params['loadModelPath']) and loadWeights==True:
+    if path.exists(params['loadModelPath']) and loadWeights == True:
         print('loading model')
         model.loadModel(params) 
 
@@ -422,7 +432,7 @@ def train(params, loadWeights=False, freezeUnits=False):
 
         # keep history           
         Ltot_h[tt] = Ltot.cpu().data.numpy();  Lpde_h[tt] = LossPDE.cpu().data.numpy()
-        Lbc_h[tt]  =  Lbc.cpu().data.numpy();  E_h[tt]    = E[-1].cpu().data.numpy()
+        Lbc_h[tt] = Lbc.cpu().data.numpy();  E_h[tt] = E[-1].cpu().data.numpy()
         # Ltr_h[tt]  = Ltriv.data.numpy();  
         
         #    Keep the best model (lowest loss). Checking after 50% of the total epochs 
@@ -451,13 +461,18 @@ params['epochs'] = int(5e3);  nEpoch1 = params['epochs']
 params['n_train'] = 100000 
 params['lr'] = 8e-3;
 
+#################
+model = NN_atom(params)
+
+#################
+
 #### ----- Training: Single model ---=---------
-train(params,loadWeights=False);  
+#train(params,loadWeights=False);  
 
 #plotLoss(params,saveFig=False)
 
 Rg, gate = returnGate()
-plt.plot(Rg, gate, linewidth=lineW)
+#plt.plot(Rg, gate, linewidth=lineW)
 
 #### ----- Fine Tuning ----------
 
@@ -474,6 +489,6 @@ params['epochs'] = int(2e3); nEpoch2 = params['epochs']
 params['n_train'] = 100000 
 params['lr'] = 5e-4;
 
-train(params, loadWeights=True, freezeUnits=True); 
+#train(params, loadWeights=True, freezeUnits=True); 
 
 #plotLoss(params, saveFig=False)
