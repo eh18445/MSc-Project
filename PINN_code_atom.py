@@ -403,7 +403,7 @@ def train(params, loadWeights=False, freezeUnits=False, optimiser='Adam'):
     TeP0 = time.time() # for counting the training time
         
     n_points = params['n_train'] # the training batch size
-    x,y,z,R = sampling(params,n_points, linearSampling=False)
+    x,y,z,R = sampling(params,n_points,linearSampling=False)
     
     #r1,r2 = radial(x, y, z,R, params)
     #bIndex1 = torch.where(r1 >= params['BCcutoff'])
