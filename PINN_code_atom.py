@@ -292,7 +292,7 @@ class NN_atom(nn.Module):
         """
         x1 = x - R; 
         y1 = y- self.Ry; z1 = z - self.Rz     # Cartesian Translation & Scaling:    
-        rVec1=torch.cat((x1,y1,z1),1)
+        rVec1 = torch.cat((x1,y1,z1),1)
         r1 = self.toR(rVec1) 
         fi_r1 = self.actAO_s(r1);  # s- ATOMIC ORBITAL ACTIVATION
         # -- 
