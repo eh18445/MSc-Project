@@ -9,6 +9,8 @@ Created on Tue Jul 18 13:12:18 2023
 
 #First take the inputs of 2 atoms
 
+#sum the overlapping orbitals together to get the outermost bonding
+
 import torch
 import matplotlib.pyplot as plt
 import numpy as np
@@ -36,7 +38,7 @@ def toR(vec):
     return r
     
 def orbital(r,theta,phi,Z,orbital_name):
-    #might need to eidt some of these equations so that they use torch.pow
+    
     if orbital_name == '1s':
         chi = Z**(3/2)*torch.exp(-r*Z)
     elif orbital_name == '2s':
@@ -50,31 +52,32 @@ def orbital(r,theta,phi,Z,orbital_name):
         else:
             chi *= torch.exp(torch.tensor([-1*phi*1j]))
     elif orbital_name == '3s':
-        chi = Z**(3/2)*(27-18*(r*Z)+2*(r*Z)**2)*torch.exp(-r*Z/3)
+        chi = Z**(3/2)*(27-18*(r*Z)+2*torch.pow(r*Z,2))*torch.exp(-r*Z/3)
     elif orbital_name == '3pz':
-        chi = Z**(3/2)*(6*r-(r*Z)**2)*torch.exp(-r*Z/3)*torch.cos(theta)
+        chi = Z**(3/2)*(6*r-torch.pow(r*Z,2))*torch.exp(-r*Z/3)*torch.cos(theta)
     elif orbital_name == '3py' or orbital_name == '3px':
-        chi = Z**(3/2)*(6*r-(r*Z)**2)*torch.exp(-r*Z/3)*torch.sin(theta)
+        chi = Z**(3/2)*(6*r-torch.pow(r*Z,2))*torch.exp(-r*Z/3)*torch.sin(theta)
         if orbital_name == '2px':
             chi *= torch.exp(torch.tensor([phi*1j]))
         else:
             chi *= torch.exp(torch.tensor([-1*phi*1j]))
     elif orbital_name == '3dz2':
-        chi = Z**(3/2)*(r*Z)**2*torch.exp(-r*Z/3)*(3*torch.cos(theta)**2-1)
+        chi = Z**(3/2)*torch.pow(r*Z,2)*torch.exp(-r*Z/3)*(3*torch.cos(theta)**2-1)
     elif orbital_name == '3dyz' or orbital_name == '3dxz':
-        chi = Z**(3/2)*(r*Z)**2*torch.exp(-r*Z/3)*torch.sin(theta)*torch.cos(theta)
+        chi = Z**(3/2)*torch.pow(r*Z,2)*torch.exp(-r*Z/3)*torch.sin(theta)*torch.cos(theta)
         if orbital_name == '3dxz':
             chi *= torch.exp(torch.tensor([phi*1j]))
         else: 
             chi *= torch.exp(torch.tensor([-1*phi*1j]))
     elif orbital_name == '3dxy' or orbital_name == '3dx2y2':
-        chi = Z**(3/2)*(r*Z)**2*torch.exp(-r*Z/3)*torch.sin(theta)**2
+        chi = Z**(3/2)*torch.pow(r*Z,2)*torch.exp(-r*Z/3)*torch.sin(theta)**2
         if orbital_name == '3dx2y2':
             chi *= torch.exp(torch.tensor([phi*1j]))
         else: 
             chi *= torch.exp(torch.tensor([-1*phi*1j]))
     else:
-        raise Exception("orbital_name invalid. A value of {} was entered. Allowed inputs: '1s', '2s', '2px', '2py, '2pz', '3s', '3px', '3py', '3pz', '3dz2', '3dyz', '3dxz', '3dxy', '3dx2y2'.".format(orbital_name))
+        raise Exception("orbital_name invalid. A value of {} was entered. Allowed inputs:".format(orbital_name)+
+                        "'1s', '2s', '2px', '2py, '2pz', '3s', '3px', '3py', '3pz', '3dz2', '3dyz', '3dxz', '3dxy', '3dx2y2'.")
             
     return chi
 
@@ -85,38 +88,62 @@ def atomicUnit(x,y,z,Rx,Ry,Rz,Z):
     R is the position of the atom.
     Returns the hydrogen atomic orbitals for the atom (in an array).
     """
+    
+    #convert cartesian co-ordinates to polar
+    #calculate the orbital
+    #convert back to cartesian
+    
     #cartesian translation and scaling
     x1 = x - Rx
     y1 = y - Ry
     z1 = z - Rz  
 
     rVec1 = torch.cat((x1,y1,z1),1)
+    #print(rVec1)
 
     r1 = toR(rVec1)
+    
     theta1 = torch.arccos(z1/r1)
     phi1 = torch.sgn(y1)*torch.arccos(x1/(torch.pow(x1,2)+torch.pow(y1,2)))
         
-    phi_r1 = orbital(r1,theta1,phi1,Z,orbital_name='2s')
+    print(theta1)
+    print(phi1)
+    
+    phi_r1 = orbital(r1,theta1,phi1,Z,orbital_name='1s')
     
     return phi_r1
 
 #Rx, Ry and Rz are positions of atom
-Rx = 0
-Ry = 0
-Rz = 0
+Rx1 = -4
+Ry1 = 0
+Rz1 = 0
+
+Rx2 = 4
+Ry2 = 0
+Rz2 = 0
 
 x = torch.linspace(-10,10,1000)
 y = torch.linspace(-10,10,1000)
 z = torch.linspace(-10,10,1000)
 
-Z = 2
+Z = 1
 
 x,y,z = x.reshape(-1,1), y.reshape(-1,1), z.reshape(-1,1)
 
-phi = atomicUnit(x,y,z,Rx,Ry,Rz,Z)
+phi1 = atomicUnit(x,y,z,Rx1,Ry1,Rz1,Z)
+phi2 = atomicUnit(x,y,z,Rx2,Ry2,Rz2,Z)
 
-plt.plot(x.cpu(),torch.abs(phi.cpu()))
-#plt.xlim(-10,10)
+#add and normalise
+Psi = (phi1 + phi2)#*(1/np.sqrt(2))
+
+plt.plot(x.cpu(),phi1.cpu())
+plt.xlim(-5,5)
 plt.ylabel('$|\Psi|$')
 plt.xlabel('x')
 plt.show()
+
+#plt.plot(x.cpu(),Psi.cpu())
+#plt.xlim(-5,5)
+#plt.ylabel('$|\Psi|$')
+#plt.xlabel('x')
+#plt.show()
