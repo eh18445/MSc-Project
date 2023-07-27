@@ -291,10 +291,14 @@ class NN_atom(nn.Module):
         Returns the hydrogen atomic s-orbitals for each ion.
         """
         x1 = x - R; 
-        y1 = y- self.Ry; z1 = z - self.Rz     # Cartesian Translation & Scaling:    
+        y1 = y - self.Ry; z1 = z - self.Rz     # Cartesian Translation & Scaling:    
         rVec1 = torch.cat((x1,y1,z1),1)
         r1 = self.toR(rVec1) 
         fi_r1 = self.actAO_s(r1);  # s- ATOMIC ORBITAL ACTIVATION
+        #print(x1)
+        #print(rVec1)
+        #print(r1)
+        #print(fi_r1)
         # -- 
         x2 = x + R; 
         y2 = y + self.Ry; z2 = z + self.Rz        
@@ -368,7 +372,15 @@ class NN_atom(nn.Module):
         #--# Trivial
         # Ltriv = 1/(psi.pow(2)).mean()* lam_tr ;    Ltot = Ltot + Ltriv 
         return Ltot, LossPDE, Lbc, E
-    
+  
+def radial(x,y,z,R,params):
+    # Returns the radial part from cartesian coordinates
+    Rx = R
+    Ry= params['Ry']; Rz= params['Rz']
+    r1 =  torch.sqrt((x-Rx).pow(2)+(y-Ry).pow(2)+(z-Rz).pow(2))
+    r2 =  torch.sqrt((x+Rx).pow(2)+(y+Ry).pow(2)+(z+Rz).pow(2))
+    return r1, r2  
+  
 def train(params, loadWeights=False, freezeUnits=False, optimiser='Adam'):
     lr = params['lr'] 
     model = NN_atom(params)     # modelBest=copy.deepcopy(model)
@@ -417,11 +429,11 @@ def train(params, loadWeights=False, freezeUnits=False, optimiser='Adam'):
         
         if tt % params['sc_sampling']==0 and tt < 0.9*epochs:
             x,y,z,R = sampling(params, n_points, linearSampling=False)            
-            #r1,r2 = radial(x, y, z,R, params)
-            #bIndex1 = torch.where(r1 >= params['BCcutoff']   )
-            #bIndex2 = torch.where(r2 >= params['BCcutoff']   )        
+            r1,r2 = radial(x, y, z,R, params)
+            bIndex1 = torch.where(r1 >= params['BCcutoff']   )
+            bIndex2 = torch.where(r2 >= params['BCcutoff']   )        
         
-        Ltot, LossPDE, Lbc, E = model.LossFunctions(x,y,z,R,params)#, bIndex1, bIndex2)
+        Ltot, LossPDE, Lbc, E = model.LossFunctions(x,y,z,R,params, bIndex1, bIndex2)
         
         Ltot.backward(retain_graph=False); optimizer.step(); 
         # if  tt < 2001:
@@ -467,7 +479,7 @@ model = NN_atom(params)
 #################
 
 #### ----- Training: Single model ---=---------
-#train(params,loadWeights=False);  
+train(params,loadWeights=False)
 
 #plotLoss(params,saveFig=False)
 

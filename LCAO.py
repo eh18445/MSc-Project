@@ -12,6 +12,10 @@ Created on Tue Jul 18 13:12:18 2023
 
 #sum the overlapping orbitals together to get the outermost bonding
 
+#############################
+#work out what the output of original code is doing
+#aim to achieve the same LCAO output of the original code
+
 import torch
 import matplotlib.pyplot as plt
 import numpy as np
@@ -40,6 +44,11 @@ def toR(vec):
     return r
     
 def orbital(r,theta,phi,Z,orbital_name):
+    """
+    Inputs r,theta,phi polar co-ords.
+    With atom located at centre.
+    Returns the orbital shape given the orbital name.
+    """
     
     if orbital_name == '1s':
         chi = Z**(3/2)*torch.exp(-r*Z)
@@ -88,7 +97,7 @@ def atomicUnit(x,y,z,Rx,Ry,Rz,Z):
     Takes the 2 inputs r and R.
     Z is the atomic number of the atom.
     R is the position of the atom.
-    Returns the hydrogen atomic orbitals for the atom (in an array).
+    Returns the hydrogen atomic orbitals for the atom.
     """
     
     time_start = time.time()
@@ -102,51 +111,64 @@ def atomicUnit(x,y,z,Rx,Ry,Rz,Z):
     y1 = y - Ry
     z1 = z - Rz
     
-    #print(x1)
-    
-    #vector pointing to each co-ordinate
-    p = 0
-    #rVec0 = torch.tensor([])
-    phiVec = torch.zeros((len(x1),len(y1),len(z1)))
-    for i in range(len(x1)):
-        for j in range(len(y1)):
-            for k in range(len(z1)):
-                rVec1 = torch.tensor([[[x1[i]],[y1[j]],[z1[k]]]])
-                
-                r1 = toR(rVec1)
-                
-                #covert to polar co-ords
-                theta1 = torch.arccos(z1[k]/r1)
-                phi1 = torch.sgn(y1[j])*torch.arccos(x1[i]/(torch.pow(x1[i],2)+torch.pow(y1[j],2)))
-                
-                phiVec[i,j,k] = orbital(r1,theta1,phi1,Z,orbital_name='1s')
-                
-                p += 1
-                if (p+1) % 4000 == 0:
-                    print(i,j,k)
-                    print(r1,theta1,phi1)
-                    print(phiVec[i,j,k])    
-                
-                
-    #rVec1 = torch.cat((x1,y1,z1),1)
-    #print(rVec1)
+    #print(x)
+                               
+    rVec1 = torch.cat((x1,y1,z1),1)
+    print(rVec1)
     #print(rVec0)
     
     #convert to radius
-    #r1 = toR(rVec1)
+    r1 = toR(rVec1)
     
     #covert to polar co-ords
-    #theta1 = torch.arccos(z1/r1)
-    #phi1 = torch.sgn(y1)*torch.arccos(x1/(torch.pow(x1,2)+torch.pow(y1,2)))
+    theta1 = torch.arccos(z1/r1)
+    phi1 = torch.sgn(y1)*torch.arccos(x1/(torch.pow(x1,2)+torch.pow(y1,2)))
         
-    #print(theta1)
-    #print(phi1)
+    print(theta1)
+    print(phi1)
     
-    #phi_r1 = orbital(r1,theta1,phi1,Z,orbital_name='1s')
+    phi_r1 = orbital(r1,theta1,phi1,Z,orbital_name='1s')
     
-    print('LCAO wavefuncton calclated in:',time.time()-time_start)
+    print('LCAO Runtime (min):',(time.time()-time_start)/60)
     
-    return phiVec
+    return phi_r1
+
+def LCAO_Solution():
+    """
+    Linearly combine atomic units.
+    """
+    return
+
+
+##############functions from original code
+def actAO_s(r):
+    return  torch.exp(-r)
+
+def atomicUnit_original(x,y,z,Rx,Ry,Rz):
+    """
+    Takes the 2 inputs r and R.
+    Returns the hydrogen atomic s-orbitals for each ion.
+    """
+    x1 = x - Rx; 
+    #y1 = y - Ry 
+    #z1 = z - Rz     # Cartesian Translation & Scaling: 
+    #rVec1 = torch.cat((x1,y1,z1),1)
+    #r1 = toR(rVec1) 
+    print(x1)
+    fi_r1 = actAO_s(x1);  # s- ATOMIC ORBITAL ACTIVATION
+    #print(x1)
+    #print(rVec1)
+    #print(r1)
+    #print(fi_r1)
+    # -- 
+    x2 = x + Rx; 
+    #y2 = y + Ry 
+    #z2 = z + Rz        
+    #rVec2=torch.cat((x2,y2,z2),1)
+    #r2 = toR(rVec2);         
+    fi_r2 = actAO_s(x2)
+    
+    return fi_r1, fi_r2
 
 #Rx, Ry and Rz are positions of atom
 Rx1 = -4
@@ -165,20 +187,51 @@ Z = 1
 
 x,y,z = x.reshape(-1,1), y.reshape(-1,1), z.reshape(-1,1)
 
+xg, yg, zg = torch.meshgrid(x,y,z)
+#xgg = xg.reshape(-1,1) 
+#ygg = yg.reshape(-1,1)
+#zgg = zg.reshape(-1,1)
+print(xg)
+
 phi1 = atomicUnit(x,y,z,Rx1,Ry1,Rz1,Z)
+#print(phi1)
 phi2 = atomicUnit(x,y,z,Rx2,Ry2,Rz2,Z)
 
 #add and normalise
 Psi = (phi1 + phi2)#*(1/np.sqrt(2))
 
-plt.plot(x.cpu(),phi1.cpu())
+#plt.plot(x.cpu(),phi1.cpu())
+#plt.xlim(-5,5)
+#plt.ylabel('$|\Psi|$')
+#plt.xlabel('x')
+#plt.show()
+
+plt.plot(x.cpu(),Psi.cpu())
+plt.title('New')
 plt.xlim(-5,5)
 plt.ylabel('$|\Psi|$')
 plt.xlabel('x')
 plt.show()
 
-#plt.plot(x.cpu(),Psi.cpu())
+
+
+
+
+
+
+phi1,phi2 = atomicUnit_original(x,y,z,Rx1,Ry1,Rz1)
+#print(phi1)
+
+#add and normalise
+Psi = (phi1 + phi2)#*(1/np.sqrt(2))
+
+plt.plot(x.cpu(),phi1.cpu())
+plt.title('Original')
 #plt.xlim(-5,5)
-#plt.ylabel('$|\Psi|$')
-#plt.xlabel('x')
-#plt.show()
+plt.ylabel('$|\Psi|$')
+plt.xlabel('x')
+plt.show()
+
+
+
+
