@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Created on Tue Jul 11 16:05:58 2023
+Created on Fri Jul 28 14:07:24 2023
 
 @author: danie
 """
@@ -31,9 +31,9 @@ torch.set_default_tensor_type('torch.DoubleTensor')
 lineW = 3
 lineBoxW=2
 
-font = {'size'   : 18}
+font = {'size': 11}
 matplotlib.rc('font', **font)
-plt.rcParams['font.size']=28
+plt.rcParams['font.size'] = 12
 plt.rcParams['lines.markersize'] = 12
 plt.rcParams.update({"text.usetex": True})
 # plt. close('all')
@@ -54,9 +54,9 @@ def set_params():
     params = dict()
     
     boundaries = 18
-    params['xL']= -boundaries; params['xR']= boundaries
-    params['yL']= -boundaries; params['yR']= boundaries
-    params['zL']= -boundaries; params['zR']= boundaries
+    params['xL'] = -boundaries; params['xR'] = boundaries
+    params['yL'] = -boundaries; params['yR'] = boundaries
+    params['zL'] = -boundaries; params['zR'] = boundaries
     params['BCcutoff'] = 17.5
 
     params['RxL'] = 0.2; params['RxR']= 4
@@ -89,7 +89,6 @@ def  exactE():
     """
     Exact energy Taken by H. Wind, J. Chem. Phys. 42, 2371 (1965); https://doi.org/10.1063/1.1696302
     """
-
     R_exact = np.round(np.arange(0.2, 4.1, .1),2)  
     e_exact  = np.zeros([len(R_exact),1])
     e_exact = [-1.8008, -1.6715, -1.5545, 
@@ -110,12 +109,80 @@ class toR(torch.nn.Module):
     @staticmethod
     def forward(input):
         r2 = input[:,0].pow(2) + input[:,1].pow(2) + input[:,2].pow(2)
-        r = torch.sqrt(r2); r = r.reshape(-1,1)
+        r = torch.sqrt(r2) 
+        r = r.reshape(-1,1)
         return r
 
-class atomicAct_s(torch.nn.Module):
+class toTheta(torch.nn.Module):
     @staticmethod
     def forward(input):
+        r2 = input[:,0].pow(2) + input[:,1].pow(2) + input[:,2].pow(2)
+        r = torch.sqrt(r2)
+        r = r.reshape(-1,1)
+        theta = torch.arccos(input[:,2]/r)
+        theta = theta.reshape(-1,1)
+        return theta
+    
+class toPhi(torch.nn.Module):
+    @staticmethod
+    def forward(input):
+        phi = torch.sgn(input[:,1])*torch.arccos(input[:,0]/(torch.pow(input[:,0],2)+torch.pow(input[:,1],2)))
+        phi = phi.reshape(-1,1)
+        return phi
+
+def orbital(r,theta,phi,Z,orbital_name):
+    """
+    Inputs r,theta,phi polar co-ords.
+    With atom located at centre.
+    Returns the orbital shape given the orbital name.
+    """
+    
+    if orbital_name == '1s':
+        chi = Z**(3/2)*torch.exp(-r*Z)
+    elif orbital_name == '2s':
+        chi = Z**(3/2)*(2-(r*Z))*torch.exp(-r*Z/2)
+    elif orbital_name == '2pz':
+        chi = Z**(3/2)*(r*Z)*torch.exp(-r*Z/2)*torch.cos(theta)
+    elif orbital_name == '2py' or orbital_name == '2px':
+        chi = Z**(3/2)*(r*Z)*torch.exp(-r*Z/2)*torch.sin(theta)
+        if orbital_name == '2px':
+            chi *= torch.exp(torch.tensor([phi*1j]))
+        else:
+            chi *= torch.exp(torch.tensor([-1*phi*1j]))
+    elif orbital_name == '3s':
+        chi = Z**(3/2)*(27-18*(r*Z)+2*torch.pow(r*Z,2))*torch.exp(-r*Z/3)
+    elif orbital_name == '3pz':
+        chi = Z**(3/2)*(6*r-torch.pow(r*Z,2))*torch.exp(-r*Z/3)*torch.cos(theta)
+    elif orbital_name == '3py' or orbital_name == '3px':
+        chi = Z**(3/2)*(6*r-torch.pow(r*Z,2))*torch.exp(-r*Z/3)*torch.sin(theta)
+        if orbital_name == '2px':
+            chi *= torch.exp(torch.tensor([phi*1j]))
+        else:
+            chi *= torch.exp(torch.tensor([-1*phi*1j]))
+    elif orbital_name == '3dz2':
+        chi = Z**(3/2)*torch.pow(r*Z,2)*torch.exp(-r*Z/3)*(3*torch.cos(theta)**2-1)
+    elif orbital_name == '3dyz' or orbital_name == '3dxz':
+        chi = Z**(3/2)*torch.pow(r*Z,2)*torch.exp(-r*Z/3)*torch.sin(theta)*torch.cos(theta)
+        if orbital_name == '3dxz':
+            chi *= torch.exp(torch.tensor([phi*1j]))
+        else: 
+            chi *= torch.exp(torch.tensor([-1*phi*1j]))
+    elif orbital_name == '3dxy' or orbital_name == '3dx2y2':
+        chi = Z**(3/2)*torch.pow(r*Z,2)*torch.exp(-r*Z/3)*torch.sin(theta)**2
+        if orbital_name == '3dx2y2':
+            chi *= torch.exp(torch.tensor([phi*1j]))
+        else: 
+            chi *= torch.exp(torch.tensor([-1*phi*1j]))
+    else:
+        raise Exception("orbital_name invalid. A value of {} was entered. Allowed inputs:".format(orbital_name)+
+                        "'1s', '2s', '2px', '2py, '2pz', '3s', '3px', '3py', '3pz', '3dz2', '3dyz', '3dxz', '3dxy', '3dx2y2'.")
+            
+    return chi
+
+class atomicAct(torch.nn.Module):
+    @staticmethod
+    def forward(input):
+        
         return  torch.exp(-input) 
 
 ## Differential Operators using autograd: 
@@ -244,8 +311,10 @@ class NN_atom(nn.Module):
         super(NN_atom,self).__init__()
 
         self.sig =  nn.Sigmoid()          
-        self.toR= toR()
-        self.actAO_s = atomicAct_s()  
+        self.toR = toR()
+        self.toTheta = toTheta()
+        self.toPhi = toPhi()
+        self.actAO = atomicAct()  
         self.Lin_H1 = torch.nn.Linear(2, dense_neurons) 
         self.Lin_H2 = torch.nn.Linear(dense_neurons, dense_neurons, bias=True) 
         
@@ -264,15 +333,19 @@ class NN_atom(nn.Module):
 
     def forward(self,x,y,z,R):        
         ## ENERGY PARAMETER
-        e = self.Lin_E1(R); e = self.sig(e)
-        e = self.Lin_E2(e); e = self.sig(e)
+        e = self.Lin_E1(R) 
+        e = self.sig(e)
+        e = self.Lin_E2(e) 
+        e = self.sig(e)
         E = self.Lin_Eout(e)
         
         ## ATOMIC Layer: Radial part and physics-based activation
         fi_r1,  fi_r2  = self.atomicUnit(x,y,z,R)        
-        fi_r1m, fi_r2m = self.atomicUnit(-x,y,z,R)        
+        fi_r1m, fi_r2m = self.atomicUnit(-x,y,z,R)  
+        
         ## LCAO SOLUTION
         N_LCAO = self.lcao_solution(fi_r1, fi_r2)
+        
         ## NONLINEAR HIDDEN LAYERS        
         B  = self.base(fi_r1,fi_r2) + self.P*self.base(fi_r1m,fi_r2m)
         NN = self.Lin_out(B)
@@ -290,20 +363,31 @@ class NN_atom(nn.Module):
         Takes the 2 inputs r and R.
         Returns the hydrogen atomic s-orbitals for each ion.
         """
-        x1 = x - R; 
-        y1 = y - self.Ry; z1 = z - self.Rz     # Cartesian Translation & Scaling:    
+        # Cartesian Translation & Scaling: 
+        x1 = x - R
+        y1 = y - self.Ry 
+        z1 = z - self.Rz        
         rVec1 = torch.cat((x1,y1,z1),1)
-        r1 = self.toR(rVec1) 
-        fi_r1 = self.actAO_s(r1);  # s- ATOMIC ORBITAL ACTIVATION
-        #print(x1)
-        #print(rVec1)
-        #print(r1)
-        #print(fi_r1)
+        
+        #parameters for orbital
+        r1 = self.toR(rVec1)
+        theta1 = self.toTheta(rVec1)
+        phi1 = self.toPhi(rVec1)
+        
+        # ATOMIC ORBITAL ACTIVATION
+        fi_r1 = self.actAO(r1);  
+
         # -- 
         x2 = x + R; 
         y2 = y + self.Ry; z2 = z + self.Rz        
         rVec2=torch.cat((x2,y2,z2),1)
-        r2 = self.toR(rVec2);         fi_r2 = self.actAO_s(r2);  
+        
+        r2 = self.toR(rVec2)         
+        theta2 = self.toTheta(rVec2)
+        phi2 = self.toPhi(rVec2)
+        
+        fi_r2 = self.actAO(r2)
+        
         return fi_r1, fi_r2
 
     def lcao_solution(self,fi_r1, fi_r2):

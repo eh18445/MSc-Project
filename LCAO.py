@@ -21,6 +21,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import matplotlib
 import time
+from scipy.integrate import simps
 
 font = {'size': 11}
 matplotlib.rc('font', **font)
@@ -123,9 +124,6 @@ def atomicUnit(x,y,z,Rx,Ry,Rz,Z):
     #covert to polar co-ords
     theta1 = torch.arccos(z1/r1)
     phi1 = torch.sgn(y1)*torch.arccos(x1/(torch.pow(x1,2)+torch.pow(y1,2)))
-        
-    print(theta1)
-    print(phi1)
     
     phi_r1 = orbital(r1,theta1,phi1,Z,orbital_name='1s')
     
@@ -133,11 +131,11 @@ def atomicUnit(x,y,z,Rx,Ry,Rz,Z):
     
     return phi_r1
 
-def LCAO_Solution():
+def LCAO_Solution(fi_r1,fi_r2):
     """
     Linearly combine atomic units.
     """
-    return
+    return fi_r1 + fi_r2
 
 
 ##############functions from original code
@@ -150,25 +148,72 @@ def atomicUnit_original(x,y,z,Rx,Ry,Rz):
     Returns the hydrogen atomic s-orbitals for each ion.
     """
     x1 = x - Rx; 
-    #y1 = y - Ry 
-    #z1 = z - Rz     # Cartesian Translation & Scaling: 
-    #rVec1 = torch.cat((x1,y1,z1),1)
-    #r1 = toR(rVec1) 
-    print(x1)
-    fi_r1 = actAO_s(x1);  # s- ATOMIC ORBITAL ACTIVATION
+    y1 = y - Ry 
+    z1 = z - Rz     # Cartesian Translation & Scaling: 
+    rVec1 = torch.cat((x1,y1,z1),1)
+    r1 = toR(rVec1) 
     #print(x1)
-    #print(rVec1)
-    #print(r1)
-    #print(fi_r1)
+    fi_r1 = actAO_s(r1);  # s- ATOMIC ORBITAL ACTIVATION
+    print(x1)
+    print(rVec1)
+    print(r1)
+    print(fi_r1)
     # -- 
     x2 = x + Rx; 
-    #y2 = y + Ry 
-    #z2 = z + Rz        
-    #rVec2=torch.cat((x2,y2,z2),1)
-    #r2 = toR(rVec2);         
-    fi_r2 = actAO_s(x2)
+    y2 = y + Ry 
+    z2 = z + Rz        
+    rVec2=torch.cat((x2,y2,z2),1)
+    r2 = toR(rVec2);         
+    fi_r2 = actAO_s(r2)
     
     return fi_r1, fi_r2
+
+def integra3d(x,y,z, f):   
+    # 3d integration using Simpson method of scipy
+    f = f.detach().numpy()
+    x = x.detach().numpy()
+    y = y.detach().numpy()
+    z = z.detach().numpy()
+    I = simps( [simps( [simps(fx, x) for fx in fy], y) for fy in f ]  ,z)
+    return I
+
+def psi3d_norm(x,y,z,psi_,Ri,densePoints,dense_sampling=False,detachAll=True):
+
+    x=x.cpu(); y=y.cpu(); z=z.cpu(); 
+    x=x.ravel(); y=y.ravel(); z=z.ravel() ; 
+    xg, yg, zg= torch.meshgrid(x, y, z)
+    xgg = xg.reshape(-1,1); ygg = yg.reshape(-1,1); zgg = zg.reshape(-1,1)
+    Rt = Ri*torch.ones_like(xgg)
+
+    # NEURAL PSI
+    n_test = 80
+    psi = psi_.reshape(n_test,n_test,n_test)
+    # LCAO
+    fi_r1, fi_r2 = atomicUnit_original(xgg,ygg,zgg,Rt)  
+    psi_L_ = LCAO_Solution(fi_r1, fi_r2)
+    psi_L = psi_L_.reshape(n_test,n_test,n_test)
+
+    
+    Npsi   = 1/np.sqrt(integra3d(x,y,z, (psi).pow(2)))
+    Npsi_L = 1/np.sqrt(integra3d(x,y,z, (psi_L).pow(2)))    
+    
+    psi=psi*Npsi 
+    psi_L = psi_L * Npsi_L
+    
+    if detachAll:
+        x,y,z = x.detach().numpy(),y.detach().numpy(),z.detach().numpy(), 
+        psi, psi_L= psi.detach().numpy(), psi_L.detach().numpy()
+    return x,y,z,psi,psi_L
+
+def psiX_norm(x,y,z,Ri,dense_sampling=False, densePoints=200):
+    n_test = 80
+    x,y,z, psi, psi_L = psi3d_norm(Ri,densePoints,dense_sampling)
+    cN = int(n_test/2);
+    ps2 = (psi[:,:,cN]);     psiCut = ps2[:,cN].reshape(-1,1)
+    ps2_L = (psi_L[:,:,cN]); ps2_LCut = (ps2_L[:,cN]).reshape(-1,1)
+    return x, psiCut, ps2_LCut
+
+#########################################################
 
 #Rx, Ry and Rz are positions of atom
 Rx1 = -4
@@ -212,10 +257,6 @@ plt.xlim(-5,5)
 plt.ylabel('$|\Psi|$')
 plt.xlabel('x')
 plt.show()
-
-
-
-
 
 
 
