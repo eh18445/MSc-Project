@@ -5,6 +5,10 @@ Created on Fri Jul 28 14:07:24 2023
 @author: danie
 """
 
+###############
+#Work out how to calculate the coulomb potential for the multiple electron orbitals
+#The potential is used in the calculation of the Hamiltonian which is subsequently used in the loss funciton
+
 import numpy as np
 import torch
 import torch.optim as optim
@@ -29,7 +33,7 @@ dtype = torch.double
 torch.set_default_tensor_type('torch.DoubleTensor')
 
 lineW = 3
-lineBoxW=2
+lineBoxW = 2
 
 font = {'size': 11}
 matplotlib.rc('font', **font)
@@ -79,7 +83,7 @@ def set_params():
     #number of protons in nucleus
     params['Z'] = 1
     #number of electrons
-    params['N_electrons'] = 1
+    params['N_electrons'] = 2*params['Z']
 
     params['inversion_symmetry'] = 1  
     
@@ -118,7 +122,6 @@ class toTheta(torch.nn.Module):
     def forward(input):
         r2 = input[:,0].pow(2) + input[:,1].pow(2) + input[:,2].pow(2)
         r = torch.sqrt(r2)
-        r = r.reshape(-1,1)
         theta = torch.arccos(input[:,2]/r)
         theta = theta.reshape(-1,1)
         return theta
@@ -176,14 +179,41 @@ def orbital(r,theta,phi,Z,orbital_name):
     else:
         raise Exception("orbital_name invalid. A value of {} was entered. Allowed inputs:".format(orbital_name)+
                         "'1s', '2s', '2px', '2py, '2pz', '3s', '3px', '3py', '3pz', '3dz2', '3dyz', '3dxz', '3dxy', '3dx2y2'.")
-            
+    chi = chi.reshape(-1,1)
     return chi
 
 class atomicAct(torch.nn.Module):
     @staticmethod
-    def forward(input):
+    def forward(polarVec,params):
+        """
+        Input vector in polar co-ordinates.
+        Sums together the different atomic orbitals for the atom.
+        Returns atomic orbitals for atom.
+        """
+        Z = params['Z']
+        orbital_list = ['1s','2s','2pz','2px','2py','3s','3pz','3py','3px','3dz2','3dyz','3dxz','3dxy','3dx2y2']
         
-        return  torch.exp(-input) 
+        phi_sum = 0
+        
+        #fill Z electron orbitals
+        for i in range(Z):    
+            if i <= 1: 
+                #1s
+                phi_sum += orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name=orbital_list[0])
+            elif i <= 3:
+                #2s
+                phi_sum += orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name=orbital_list[1])
+            elif i == 4 or i == 7:
+                #2pz
+                phi_sum += orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name=orbital_list[2])
+            elif i == 5 or i == 8:
+                #2px
+                phi_sum += orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name=orbital_list[3])
+            elif i == 6 or i == 9:
+                #2py
+                phi_sum += orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name=orbital_list[4])
+        
+        return  phi_sum
 
 ## Differential Operators using autograd: 
     
@@ -208,21 +238,42 @@ def lapl(x,y,z,f):
 
 ## Misc physical functions
 
-def V(x,y,z, R, params):
+def radial(x,y,z,R,params):
+    """
+    Returns the radial part from cartesian coordinates
+    """
+    Rx = R
+    Ry = params['Ry']
+    Rz = params['Rz']
+    r1 = torch.sqrt((x-Rx).pow(2)+(y-Ry).pow(2)+(z-Rz).pow(2))
+    r2 = torch.sqrt((x+Rx).pow(2)+(y+Ry).pow(2)+(z+Rz).pow(2))
+    return r1, r2
+
+def V(x,y,z,R,params):
     """
     Potential energy function.
     For each electron calculate coulomb potential from all other electrons
     """
     #####!!!!!!!!!!!!!!!!How to input r_i and r_ij?
-    r_i = 1
-    r_ij = 2
+    #original code only factored in the electronic repulsion of the nuclei
     
-    potential = 0
-    for i in range(params['N_electrons']):
-        potential -= params['Z']/r_i
-        for j in range(i+1):
-            if j != i:
-                potential += 1/r_ij
+    #positions of each atom
+    r1,r2 = radial(x,y,z,R,params)
+    
+    #nuclear interaction
+    potential = -params['Z']/r1 -params['Z']/r2
+    
+    #repulsion from other electrons
+    # potential += 1/r_ij
+    #r_ij is distance between electrons
+    #r_i = 1
+    #r_ij = 2
+    #for i in range(params['N_electrons']):
+        #potential -= params['Z']/r1
+        #for j in range(i+1):
+            #if j != i:
+                #potential += 1/r_ij
+                
     return potential
     
 def hamiltonian(x,y,z,R,psi,params):
@@ -326,7 +377,8 @@ class NN_atom(nn.Module):
         self.Lin_Eout = torch.nn.Linear(dense_neurons_E, 1)                
         nn.init.constant_(self.Lin_Eout.bias[0], -1 ) 
 
-        self.Ry = params['Ry'];  self.Rz = params['Rz']
+        self.Ry = params['Ry'] 
+        self.Rz = params['Rz']
         self.P = params['inversion_symmetry']
         self.netDecayL = torch.nn.Linear(1, netDecay_neurons, bias=True)  
         self.netDecay = torch.nn.Linear(netDecay_neurons, 1, bias=True)  
@@ -373,9 +425,10 @@ class NN_atom(nn.Module):
         r1 = self.toR(rVec1)
         theta1 = self.toTheta(rVec1)
         phi1 = self.toPhi(rVec1)
+        polarVec1 = torch.cat((r1,theta1,phi1),1)
         
         # ATOMIC ORBITAL ACTIVATION
-        fi_r1 = self.actAO(r1);  
+        fi_r1 = self.actAO(polarVec1,params) 
 
         # -- 
         x2 = x + R; 
@@ -385,8 +438,9 @@ class NN_atom(nn.Module):
         r2 = self.toR(rVec2)         
         theta2 = self.toTheta(rVec2)
         phi2 = self.toPhi(rVec2)
+        polarVec2 = torch.cat((r2,theta2,phi2),1)
         
-        fi_r2 = self.actAO(r2)
+        fi_r2 = self.actAO(polarVec2,params)
         
         return fi_r1, fi_r2
 
@@ -401,7 +455,7 @@ class NN_atom(nn.Module):
     
     def base(self,fi_r1,fi_r2):
         ## NONLINEAR HIDDEN LAYERS; Black box
-        fi_r = torch.cat((fi_r1, fi_r2),1)    
+        fi_r = torch.cat((fi_r1,fi_r2),1)    
         fi_r = self.Lin_H1(fi_r);         fi_r = self.sig(fi_r) 
         fi_r = self.Lin_H2(fi_r);         fi_r = self.sig(fi_r) 
         # fi_r = self.Lin_H3(fi_r);         fi_r = self.sig(fi_r) 
@@ -471,11 +525,13 @@ def train(params, loadWeights=False, freezeUnits=False, optimiser='Adam'):
     
     if optimiser == 'Adam':
         optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=0)
-        print('train with Adam')   
+        print('Train with Adam')   
     elif optimiser == 'SGD':
         optimizer = optim.SGD(model.parameters(), lr=lr, momentum=0.5)
-        print('train with SGD')
-
+        print('Train with SGD')
+    
+    print('Setup is 2 atoms with atomic number {}.'.format(params['Z']))
+    
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=params['sc_step'], gamma=params['sc_decay'])    
     Llim =  10 ; optEpoch=0    
 
@@ -553,9 +609,11 @@ def train(params, loadWeights=False, freezeUnits=False, optimiser='Adam'):
     
 params = set_params()
 
-params['epochs'] = int(5e3);  nEpoch1 = params['epochs']
+params['epochs'] = int(5e3) 
+nEpoch1 = params['epochs']
 params['n_train'] = 100000 
-params['lr'] = 8e-3;
+params['lr'] = 8e-3
+#params['Z'] = 8
 
 #################
 model = NN_atom(params)

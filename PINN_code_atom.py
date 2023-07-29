@@ -295,15 +295,13 @@ class NN_atom(nn.Module):
         rVec1 = torch.cat((x1,y1,z1),1)
         r1 = self.toR(rVec1) 
         fi_r1 = self.actAO_s(r1);  # s- ATOMIC ORBITAL ACTIVATION
-        #print(x1)
-        #print(rVec1)
-        #print(r1)
-        #print(fi_r1)
         # -- 
         x2 = x + R; 
         y2 = y + self.Ry; z2 = z + self.Rz        
         rVec2=torch.cat((x2,y2,z2),1)
-        r2 = self.toR(rVec2);         fi_r2 = self.actAO_s(r2);  
+        r2 = self.toR(rVec2) 
+        fi_r2 = self.actAO_s(r2)  
+        print(fi_r2)
         return fi_r1, fi_r2
 
     def lcao_solution(self,fi_r1, fi_r2):

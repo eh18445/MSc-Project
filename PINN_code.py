@@ -130,8 +130,8 @@ def radial(x,y,z,R,params):
     # Returns the radial part from cartesian coordinates
     Rx = R
     Ry= params['Ry']; Rz= params['Rz']
-    r1 =  torch.sqrt((x-Rx).pow(2)+(y-Ry).pow(2)+(z-Rz).pow(2))
-    r2 =  torch.sqrt((x+Rx).pow(2)+(y+Ry).pow(2)+(z+Rz).pow(2))
+    r1 = torch.sqrt((x-Rx).pow(2)+(y-Ry).pow(2)+(z-Rz).pow(2))
+    r2 = torch.sqrt((x+Rx).pow(2)+(y+Ry).pow(2)+(z+Rz).pow(2))
     return r1, r2
 
 def V(x,y,z, R, params):
