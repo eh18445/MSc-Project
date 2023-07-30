@@ -149,9 +149,9 @@ def orbital(r,theta,phi,Z,orbital_name):
     elif orbital_name == '2py' or orbital_name == '2px':
         chi = Z**(3/2)*(r*Z)*torch.exp(-r*Z/2)*torch.sin(theta)
         if orbital_name == '2px':
-            chi *= torch.exp(torch.tensor([phi*1j]))
+            chi = chi.mul(torch.exp(phi*1j))
         else:
-            chi *= torch.exp(torch.tensor([-1*phi*1j]))
+            chi = chi.mul(torch.exp(-1*phi*1j))
     elif orbital_name == '3s':
         chi = Z**(3/2)*(27-18*(r*Z)+2*torch.pow(r*Z,2))*torch.exp(-r*Z/3)
     elif orbital_name == '3pz':
@@ -159,27 +159,28 @@ def orbital(r,theta,phi,Z,orbital_name):
     elif orbital_name == '3py' or orbital_name == '3px':
         chi = Z**(3/2)*(6*r-torch.pow(r*Z,2))*torch.exp(-r*Z/3)*torch.sin(theta)
         if orbital_name == '2px':
-            chi *= torch.exp(torch.tensor([phi*1j]))
+            chi = chi.mul(torch.exp(phi*1j))
         else:
-            chi *= torch.exp(torch.tensor([-1*phi*1j]))
+            chi = chi.mul(torch.exp(-1*phi*1j))
     elif orbital_name == '3dz2':
         chi = Z**(3/2)*torch.pow(r*Z,2)*torch.exp(-r*Z/3)*(3*torch.cos(theta)**2-1)
     elif orbital_name == '3dyz' or orbital_name == '3dxz':
         chi = Z**(3/2)*torch.pow(r*Z,2)*torch.exp(-r*Z/3)*torch.sin(theta)*torch.cos(theta)
         if orbital_name == '3dxz':
-            chi *= torch.exp(torch.tensor([phi*1j]))
+            chi = chi.mul(torch.exp(phi*1j))
         else: 
-            chi *= torch.exp(torch.tensor([-1*phi*1j]))
+            chi = chi.mul(torch.exp(-1*phi*1j))
     elif orbital_name == '3dxy' or orbital_name == '3dx2y2':
         chi = Z**(3/2)*torch.pow(r*Z,2)*torch.exp(-r*Z/3)*torch.sin(theta)**2
         if orbital_name == '3dx2y2':
-            chi *= torch.exp(torch.tensor([phi*1j]))
+            chi = chi.mul(torch.exp(phi*1j))
         else: 
-            chi *= torch.exp(torch.tensor([-1*phi*1j]))
+            chi = chi.mul(torch.exp(-1*phi*1j))
     else:
         raise Exception("orbital_name invalid. A value of {} was entered. Allowed inputs:".format(orbital_name)+
                         "'1s', '2s', '2px', '2py, '2pz', '3s', '3px', '3py', '3pz', '3dz2', '3dyz', '3dxz', '3dxy', '3dx2y2'.")
     chi = chi.reshape(-1,1)
+
     return chi
 
 class atomicAct(torch.nn.Module):
@@ -193,27 +194,29 @@ class atomicAct(torch.nn.Module):
         Z = params['Z']
         orbital_list = ['1s','2s','2pz','2px','2py','3s','3pz','3py','3px','3dz2','3dyz','3dxz','3dxy','3dx2y2']
         
-        phi_sum = 0
+        AO_sum = torch.zeros(len(polarVec))
+        AO_sum = AO_sum.reshape(-1,1)
         
         #fill Z electron orbitals
+        #!!!!!!!!!!!!!!!Only works up to Z=9 currently
         for i in range(Z):    
             if i <= 1: 
                 #1s
-                phi_sum += orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name=orbital_list[0])
+                AO_sum = AO_sum.add(orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name=orbital_list[0]))
             elif i <= 3:
                 #2s
-                phi_sum += orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name=orbital_list[1])
+                AO_sum = AO_sum.add(orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name=orbital_list[1]))
             elif i == 4 or i == 7:
                 #2pz
-                phi_sum += orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name=orbital_list[2])
+                AO_sum = AO_sum.add(orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name=orbital_list[2]))
             elif i == 5 or i == 8:
                 #2px
-                phi_sum += orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name=orbital_list[3])
+                AO_sum = AO_sum.add(orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name=orbital_list[3]))
             elif i == 6 or i == 9:
                 #2py
-                phi_sum += orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name=orbital_list[4])
+                AO_sum = AO_sum.add(orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name=orbital_list[4]))
         
-        return  phi_sum
+        return  AO_sum
 
 ## Differential Operators using autograd: 
     
@@ -456,6 +459,7 @@ class NN_atom(nn.Module):
     def base(self,fi_r1,fi_r2):
         ## NONLINEAR HIDDEN LAYERS; Black box
         fi_r = torch.cat((fi_r1,fi_r2),1)    
+        ####################################ERROR: mat1 and mat2 must have same dtype
         fi_r = self.Lin_H1(fi_r);         fi_r = self.sig(fi_r) 
         fi_r = self.Lin_H2(fi_r);         fi_r = self.sig(fi_r) 
         # fi_r = self.Lin_H3(fi_r);         fi_r = self.sig(fi_r) 
@@ -613,8 +617,8 @@ params['epochs'] = int(5e3)
 nEpoch1 = params['epochs']
 params['n_train'] = 100000 
 params['lr'] = 8e-3
-#params['Z'] = 8
-
+params['Z'] = 8
+params['N_electrons'] = 2*params['Z']
 #################
 model = NN_atom(params)
 
