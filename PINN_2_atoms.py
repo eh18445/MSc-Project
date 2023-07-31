@@ -236,6 +236,7 @@ def lapl(x,y,z,f):
     """
     Returns value of the laplacian operator at x,y,z for function f
     """
+
     f_xx, f_yy, f_zz = d2fx(x,f), d2fx(y,f), d2fx(z,f)
     return f_xx + f_yy + f_zz
 
@@ -267,6 +268,10 @@ def V(x,y,z,R,params):
     potential = -params['Z']/r1 -params['Z']/r2
     
     #repulsion from other electrons
+    #Maybe use the electron density from each electron and calculate repulsion based on that
+    #electron-electron exchange integral?
+    #Hartree-Fock coulomb term?
+    
     # potential += 1/r_ij
     #r_ij is distance between electrons
     #r_i = 1
@@ -312,7 +317,7 @@ def sampling(params, n_points, linearSampling=False):
     x.requires_grad=True; y.requires_grad=True; z.requires_grad=True; R.requires_grad=True     
     return x,y,z,R
 
-def saveLoss(params, lossDictionary):
+def saveLoss(params,lossDictionary):
     with open(params['lossPath'], 'wb') as f:
         pickle.dump(lossDictionary, f)
         
@@ -326,7 +331,7 @@ def returnGate():
     f = modelTest.netDecay(f) 
     return R.cpu().detach().numpy(), f.cpu().detach().numpy()
 
-def integra3d(x,y,z, f):   
+def integra3d(x,y,z,f):   
     # 3d integration using Simpson method of scipy
     f = f.detach().numpy()
     x = x.detach().numpy()
@@ -335,7 +340,7 @@ def integra3d(x,y,z, f):
     I = simps( [simps( [simps(fx, x) for fx in fy], y) for fy in f ]  ,z)
     return I
 
-def plotLoss(params,  saveFig=True):
+def plotLoss(params,saveFig=True):
     with open(params['lossPath'], 'rb') as f:
         loaded_dict = pickle.load(f)
 
@@ -378,7 +383,7 @@ class NN_atom(nn.Module):
         self.Lin_E2 = torch.nn.Linear(dense_neurons_E, dense_neurons_E) 
 
         self.Lin_Eout = torch.nn.Linear(dense_neurons_E, 1)                
-        nn.init.constant_(self.Lin_Eout.bias[0], -1 ) 
+        nn.init.constant_(self.Lin_Eout.bias[0], -1) 
 
         self.Ry = params['Ry'] 
         self.Rz = params['Rz']
@@ -409,7 +414,7 @@ class NN_atom(nn.Module):
         f = self.sig(f)
         f = self.netDecay(f) 
         NN = NN*f
-
+        
         Nout = NN + N_LCAO      
         return Nout, E
  
@@ -447,22 +452,32 @@ class NN_atom(nn.Module):
         
         return fi_r1, fi_r2
 
-    def lcao_solution(self,fi_r1, fi_r2):
+    def lcao_solution(self,fi_r1,fi_r2):
         """
         LCAO solution: Linear combination
         Psi_LCAO = fi_r1 +/- fi_r2
         Use + version for symmetric which we do if self.P=1
         """
-        N_LCAO = (fi_r1 + self.P* fi_r2)        
+        N_LCAO = (fi_r1 + self.P*fi_r2)
+        
+        #take only the real part of LCAO
+        N_LCAO = N_LCAO.real
+        N_LCAO = N_LCAO.type(torch.DoubleTensor)
+        
         return N_LCAO
     
     def base(self,fi_r1,fi_r2):
-        ## NONLINEAR HIDDEN LAYERS; Black box
-        fi_r = torch.cat((fi_r1,fi_r2),1)    
+        ## NONLINEAR HIDDEN LAYERS; Black box   
+        fi_r = torch.cat((fi_r1,fi_r2),1)   
+        
+        #take only the real part of atomic units
+        fi_r = fi_r.real
+        fi_r = fi_r.type(torch.DoubleTensor) 
+        
         ####################################ERROR: mat1 and mat2 must have same dtype
         fi_r = self.Lin_H1(fi_r);         fi_r = self.sig(fi_r) 
         fi_r = self.Lin_H2(fi_r);         fi_r = self.sig(fi_r) 
-        # fi_r = self.Lin_H3(fi_r);         fi_r = self.sig(fi_r) 
+        #fi_r = self.Lin_H3(fi_r);         fi_r = self.sig(fi_r) 
         return fi_r
         
     def freezeBase(self):
@@ -490,7 +505,7 @@ class NN_atom(nn.Module):
         self.load_state_dict(checkpoint['model_state_dict'])
         self.eval(); 
 
-    def saveModel(self,params, optimizer):
+    def saveModel(self,params,optimizer):
         torch.save({
             # 'epoch': epoch,
             'model_state_dict': self.state_dict(),
@@ -498,7 +513,7 @@ class NN_atom(nn.Module):
             # 'loss': loss
         },  params['saveModelPath'])   
         
-    def LossFunctions(self, x,y,z,R,params, bIndex1, bIndex2):
+    def LossFunctions(self,x,y,z,R,params,bIndex1,bIndex2):
         lam_bc, lam_pde = 1 , 1    #lam_tr = 1e-9
         psi, E = self.parametricPsi(x,y,z,R)
         #--# PDE       
@@ -514,16 +529,8 @@ class NN_atom(nn.Module):
         #--# Trivial
         # Ltriv = 1/(psi.pow(2)).mean()* lam_tr ;    Ltot = Ltot + Ltriv 
         return Ltot, LossPDE, Lbc, E
-  
-def radial(x,y,z,R,params):
-    # Returns the radial part from cartesian coordinates
-    Rx = R
-    Ry= params['Ry']; Rz= params['Rz']
-    r1 =  torch.sqrt((x-Rx).pow(2)+(y-Ry).pow(2)+(z-Rz).pow(2))
-    r2 =  torch.sqrt((x+Rx).pow(2)+(y+Ry).pow(2)+(z+Rz).pow(2))
-    return r1, r2  
-  
-def train(params, loadWeights=False, freezeUnits=False, optimiser='Adam'):
+
+def train(params,loadWeights=False,freezeUnits=False,optimiser='Adam'):
     lr = params['lr'] 
     model = NN_atom(params)     # modelBest=copy.deepcopy(model)
     
@@ -573,11 +580,11 @@ def train(params, loadWeights=False, freezeUnits=False, optimiser='Adam'):
         
         if tt % params['sc_sampling']==0 and tt < 0.9*epochs:
             x,y,z,R = sampling(params, n_points, linearSampling=False)            
-            r1,r2 = radial(x, y, z,R, params)
-            bIndex1 = torch.where(r1 >= params['BCcutoff']   )
-            bIndex2 = torch.where(r2 >= params['BCcutoff']   )        
+            r1,r2 = radial(x,y,z,R,params)
+            bIndex1 = torch.where(r1 >= params['BCcutoff'])
+            bIndex2 = torch.where(r2 >= params['BCcutoff'])        
         
-        Ltot, LossPDE, Lbc, E = model.LossFunctions(x,y,z,R,params, bIndex1, bIndex2)
+        Ltot, LossPDE, Lbc, E = model.LossFunctions(x,y,z,R,params,bIndex1,bIndex2)
         
         Ltot.backward(retain_graph=False); optimizer.step(); 
         # if  tt < 2001:
