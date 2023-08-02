@@ -65,7 +65,7 @@ def integra3d(x,y,z,f):
     I = simps( [simps( [simps(fx, x) for fx in fy], y) for fy in f ]  ,z)
     return I
 
-def atomicUnit(self,x,y,z,R,Ry,Rz,Z):
+def atomicUnit(x,y,z,R,Ry,Rz,Z):
     """
     Takes the 2 inputs r and R.
     Returns the hydrogen atomic s-orbitals for each ion.
@@ -83,21 +83,23 @@ def atomicUnit(self,x,y,z,R,Ry,Rz,Z):
     polarVec1 = torch.cat((r1,theta1,phi1),1)
     
     # ATOMIC ORBITAL ACTIVATION
-    fi_r1 = atomicAct(polarVec1,Z) 
+    fi_r1, orbArray1 = atomicAct(polarVec1,Z) 
 
     # -- 
     x2 = x + R; 
     y2 = y + Ry; z2 = z + Rz        
-    rVec2=torch.cat((x2,y2,z2),1)
+    rVec2 = torch.cat((x2,y2,z2),1)
     
     r2 = toR(rVec2)         
     theta2 = toTheta(rVec2)
     phi2 = toPhi(rVec2)
     polarVec2 = torch.cat((r2,theta2,phi2),1)
     
-    fi_r2 = atomicAct(polarVec2,Z)
+    fi_r2, orbArray2 = atomicAct(polarVec2,Z)
+
+    orbArray = torch.cat((orbArray1,orbArray2),1)
     
-    return fi_r1, fi_r2
+    return fi_r1, fi_r2, orbArray
 
 def lcao_solution(self,fi_r1,fi_r2):
     """
@@ -127,7 +129,7 @@ def toTheta(rVecPolar):
     return theta
     
 def toPhi(rVecPolar):
-    phi = torch.sgn(rVecPolar[:,1])*torch.arccos(rVecPolar[:,0]/(torch.pow(rVecPolar[:,0],2)+torch.pow(input[:,1],2)))
+    phi = torch.sgn(rVecPolar[:,1])*torch.arccos(rVecPolar[:,0]/(torch.pow(rVecPolar[:,0],2)+torch.pow(rVecPolar[:,1],2)))
     phi = phi.reshape(-1,1)
     return phi
 
@@ -175,8 +177,8 @@ def orbital(r,theta,phi,Z,orbital_name):
         else: 
             chi = chi.mul(torch.exp(-1*phi*1j))
     else:
-        raise Exception("orbital_name invalid. A value of {} was entered. Allowed inputs:".format(orbital_name)+
-                        "'1s', '2s', '2px', '2py, '2pz', '3s', '3px', '3py', '3pz', '3dz2', '3dyz', '3dxz', '3dxy', '3dx2y2'.")
+        raise ValueError("orbital_name invalid. A value of {} was entered. Allowed inputs:".format(orbital_name)+
+                         "'1s', '2s', '2px', '2py, '2pz', '3s', '3px', '3py', '3pz', '3dz2', '3dyz', '3dxz', '3dxy', '3dx2y2'.")
     chi = chi.reshape(-1,1)
 
     return chi
@@ -198,20 +200,104 @@ def atomicAct(polarVec,Z):
     for i in range(Z):    
         if i <= 1: 
             #1s
-            AO_sum = AO_sum.add(orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name=orbital_list[0]))
+            orb = orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name=orbital_list[0])
+            AO_sum = AO_sum.add(orb)
+            
+            #orbArray will contain all the orbitals so the can be used to calculate the coulomb potential
+            if i == 0:
+                orbArray = orb
+            else:
+                orbArray = torch.cat((orbArray,orb),1)
         elif i <= 3:
             #2s
-            AO_sum = AO_sum.add(orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name=orbital_list[1]))
+            orb = orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name=orbital_list[1])
+            AO_sum = AO_sum.add(orb)
+            orbArray = torch.cat((orbArray,orb),1)
         elif i == 4 or i == 7:
             #2pz
-            AO_sum = AO_sum.add(orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name=orbital_list[2]))
+            orb = orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name=orbital_list[2])
+            AO_sum = AO_sum.add(orb)
+            orbArray = torch.cat((orbArray,orb),1)
         elif i == 5 or i == 8:
             #2px
-            AO_sum = AO_sum.add(orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name=orbital_list[3]))
+            orb = orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name=orbital_list[3])
+            AO_sum = AO_sum.add(orb)
+            orbArray = torch.cat((orbArray,orb),1)
         elif i == 6 or i == 9:
             #2py
-            AO_sum = AO_sum.add(orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name=orbital_list[4]))
+            orb = orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name=orbital_list[4])
+            AO_sum = AO_sum.add(orb)
+            orbArray = torch.cat((orbArray,orb),1)   
     
-    return  AO_sum
+    return  AO_sum, orbArray
 
 #construct vectors for x,y,z,R
+n_points = 1000
+x = torch.linspace(-18,18,n_points,requires_grad=False)
+y = torch.linspace(-18,18,n_points,requires_grad=False)
+z = torch.linspace(-18,18,n_points,requires_grad=False)
+R = torch.linspace(0.2,4,n_points,requires_grad=False)
+
+x = x.reshape(-1,1); y = y.reshape(-1,1); z = z.reshape(-1,1); R = R.reshape(-1,1)
+
+Z = 8 
+Ry = 0
+Rz = 0
+
+fi_r1, fi_r2, orbArray = atomicUnit(x,y,z,R,Ry,Rz,Z)
+
+def radial(x,y,z,R,Ry,Rz):
+    """
+    Returns the radial part from cartesian coordinates
+    """
+    Rx = R
+    Ry = Ry
+    Rz = Rz
+    r1 = torch.sqrt((x-Rx).pow(2)+(y-Ry).pow(2)+(z-Rz).pow(2))
+    r2 = torch.sqrt((x+Rx).pow(2)+(y+Ry).pow(2)+(z+Rz).pow(2))
+    return r1, r2
+
+def V(x,y,z,R,Ry,Rz,orbArray):
+    """
+    Potential energy function.
+    For each electron calculate coulomb potential from all other electrons
+    """
+    #distance from atom to x,y,z values
+    r1,r2 = radial(x,y,z,R,Ry,Rz)
+    
+    #nuclear interaction
+    potential = -Z/r1 -Z/r2
+    
+    #repulsion from other electrons
+    #Hartree Fock integral
+    # SS |Chi_i|^2 * 1/r_ij * |Chi_j|^2 dr_i dr_j for each orbital chi_i and chi_j
+    #Needs to be calculated for each orbital in molecule
+    
+    #r_ij is distance between r_i and r_j
+    r_ij = torch.abs(r1-r2)
+    r1 = r1.detach().numpy()
+    r2 = r2.detach().numpy()
+
+    for i in range(1,orbArray.shape[1]):
+        for j in range(0,i):
+            print(i,j)
+            
+            chi_i = orbArray[:,i].abs().pow(2)
+            chi_j = orbArray[:,j].abs().pow(2)
+            chi_i = chi_i.reshape(-1,1); chi_j = chi_j.reshape(-1,1)
+            f = chi_i * 1/r_ij * chi_j
+            
+            #needs to integrate over r1 and r2
+            f = f.detach().numpy()
+            f2 = simps(f, r1)
+            f2 = f2.reshape(-1,1)
+            potential += simps(f2,r2)
+            
+    return potential
+
+potential = V(x,y,z,R,Ry,Rz,orbArray)
+print(potential)
+
+
+
+

@@ -190,6 +190,7 @@ def integra3d(x,y,z, f):
     x = x.detach().numpy()
     y = y.detach().numpy()
     z = z.detach().numpy()
+    print(f.shape,x.shape,y.shape)
     I = simps( [simps( [simps(fx, x) for fx in fy], y) for fy in f ]  ,z)
     return I
 

@@ -177,8 +177,8 @@ def orbital(r,theta,phi,Z,orbital_name):
         else: 
             chi = chi.mul(torch.exp(-1*phi*1j))
     else:
-        raise Exception("orbital_name invalid. A value of {} was entered. Allowed inputs:".format(orbital_name)+
-                        "'1s', '2s', '2px', '2py, '2pz', '3s', '3px', '3py', '3pz', '3dz2', '3dyz', '3dxz', '3dxy', '3dx2y2'.")
+        raise ValueError("orbital_name invalid. A value of {} was entered. Allowed inputs:".format(orbital_name)+
+                         "'1s', '2s', '2px', '2py, '2pz', '3s', '3px', '3py', '3pz', '3dz2', '3dyz', '3dxz', '3dxy', '3dx2y2'.")
     chi = chi.reshape(-1,1)
 
     return chi
@@ -543,7 +543,7 @@ def train(params,loadWeights=False,freezeUnits=False,optimiser='Adam'):
     
     print('Setup is 2 atoms with atomic number {}.'.format(params['Z']))
     
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=params['sc_step'], gamma=params['sc_decay'])    
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer,step_size=params['sc_step'],gamma=params['sc_decay'])    
     Llim =  10 ; optEpoch=0    
 
     epochs = params['epochs'] # For Adam 
