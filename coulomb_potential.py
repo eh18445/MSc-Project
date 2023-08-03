@@ -55,15 +55,6 @@ else:
     device = torch.device('cpu')
     torch.set_default_tensor_type('torch.DoubleTensor')
     print('No GPU found, using cpu')
-    
-def integra3d(x,y,z,f):   
-    # 3d integration using Simpson method of scipy
-    f = f.detach().numpy()
-    x = x.detach().numpy()
-    y = y.detach().numpy()
-    z = z.detach().numpy()
-    I = simps( [simps( [simps(fx, x) for fx in fy], y) for fy in f ]  ,z)
-    return I
 
 def atomicUnit(x,y,z,R,Ry,Rz,Z):
     """
@@ -232,7 +223,7 @@ def atomicAct(polarVec,Z):
     return  AO_sum, orbArray
 
 #construct vectors for x,y,z,R
-n_points = 1000
+n_points = 100000
 x = torch.linspace(-18,18,n_points,requires_grad=False)
 y = torch.linspace(-18,18,n_points,requires_grad=False)
 z = torch.linspace(-18,18,n_points,requires_grad=False)
@@ -280,23 +271,22 @@ def V(x,y,z,R,Ry,Rz,orbArray):
 
     for i in range(1,orbArray.shape[1]):
         for j in range(0,i):
-            print(i,j)
-            
             chi_i = orbArray[:,i].abs().pow(2)
             chi_j = orbArray[:,j].abs().pow(2)
             chi_i = chi_i.reshape(-1,1); chi_j = chi_j.reshape(-1,1)
+            chi_i = chi_i.cpu(); chi_j = chi_j.cpu()
             f = chi_i * 1/r_ij * chi_j
             
             #needs to integrate over r1 and r2
             f = f.detach().numpy()
             f2 = simps(f, r1)
             f2 = f2.reshape(-1,1)
-            potential += simps(f2,r2)
+            potential += simps(f2,r2).reshape(-1,1)            
             
     return potential
 
+x = x.cpu(); y = y.cpu(); z = z.cpu(); R = R.cpu()
 potential = V(x,y,z,R,Ry,Rz,orbArray)
-print(potential)
 
 
 

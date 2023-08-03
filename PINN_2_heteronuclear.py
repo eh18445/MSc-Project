@@ -1,16 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-Created on Fri Jul 28 14:07:24 2023
+Created on Thu Aug  3 16:36:48 2023
 
 @author: danie
 """
 
-###############
-#Work out how to calculate the coulomb potential for the multiple electron orbitals
-#The potential is used in the calculation of the Hamiltonian which is subsequently used in the loss funciton
-
-#Change it so that there is an electron entering an orbital for an atom that is positive and the user specifies which orbital?
-#or might have to factor in hybridisation
+######################
+#Adapt so it functions for 2 different atom inputs
 
 import numpy as np
 import torch
@@ -84,9 +80,10 @@ def set_params():
     params['lr'] = 8e-3; 
     
     #number of protons in nucleus
-    params['Z'] = 1
+    params['Z1'] = 1
+    params['Z2'] = 1
     #number of electrons
-    params['N_electrons'] = 2*params['Z']
+    params['N_electrons'] = params['Z1'] + params['Z2']
 
     params['inversion_symmetry'] = 1  
     
@@ -627,8 +624,9 @@ params['epochs'] = int(5e3)
 nEpoch1 = params['epochs']
 params['n_train'] = 100000 
 params['lr'] = 8e-3
-params['Z'] = 8
-params['N_electrons'] = 2*params['Z']
+params['Z1'] = 1
+params['Z2'] = 2
+params['N_electrons'] = params['Z1'] + params['Z2']
 #################
 model = NN_atom(params)
 
