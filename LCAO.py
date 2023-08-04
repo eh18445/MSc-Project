@@ -22,10 +22,12 @@ import numpy as np
 import matplotlib
 import time
 from scipy.integrate import simps
+from torch.autograd import grad
 
 font = {'size': 11}
 matplotlib.rc('font', **font)
 plt.rcParams['font.size'] = 12
+dtype = torch.double
 
 if torch.cuda.is_available():
     # device = torch.device('cuda')
@@ -43,6 +45,68 @@ def toR(vec):
     r = torch.sqrt(r2)
     r = r.reshape(-1,1)
     return r
+
+def radial(x,y,z,R):
+    """
+    Returns the radial part from cartesian coordinates
+    """
+    Rx = R
+    Ry = 0
+    Rz = 0
+    r1 = torch.sqrt((x-Rx).pow(2)+(y-Ry).pow(2)+(z-Rz).pow(2))
+    r2 = torch.sqrt((x+Rx).pow(2)+(y+Ry).pow(2)+(z+Rz).pow(2))
+    return r1, r2
+
+def V(x,y,z,R,Z1,Z2):
+    """
+    Potential energy function.
+    For each electron calculate coulomb potential from all other electrons
+    """
+    #positions of each atom
+    r1,r2 = radial(x,y,z,R)
+    
+    #nuclear interaction
+    ##########!!!!!!!!!!!!!!!!!!Replace Z with effective potential
+    Z1_eff = 1
+    Z2_eff = 4.45
+    potential = -Z1_eff/r1 -Z2_eff/r2
+   
+    return potential
+
+def effectivePotential(Z,orb):
+    """
+    Takes an input atomic number and outermost orbital 
+    returns the effective potential
+    """
+    return
+    
+def dfx(x,f):
+    """
+    Returns 1st derivative
+    """
+    return grad([f],[x],grad_outputs=torch.ones(x.shape,dtype=dtype),create_graph=True)[0]
+
+def d2fx(x,f):
+    """
+    Returns 2nd derivative
+    """
+    return grad(dfx(x,f),[x],grad_outputs=torch.ones(x.shape,dtype=dtype),create_graph=True)[0]
+
+def lapl(x,y,z,f):
+    """
+    Returns value of the laplacian operator at x,y,z for function f
+    """
+
+    f_xx, f_yy, f_zz = d2fx(x,f), d2fx(y,f), d2fx(z,f)
+    return f_xx + f_yy + f_zz
+
+def hamiltonian(x,y,z,R,psi,Z1,Z2):
+    """
+    Returns Hamiltonian for this setup
+    """
+    laplacian = lapl(x,y,z,psi)        
+    return  -0.5*laplacian + V(x,y,z,R,Z1,Z2)*psi
+        
     
 def orbital(r,theta,phi,Z,orbital_name):
     """
@@ -59,220 +123,155 @@ def orbital(r,theta,phi,Z,orbital_name):
         chi = Z**(3/2)*(r*Z)*torch.exp(-r*Z/2)*torch.cos(theta)
     elif orbital_name == '2py' or orbital_name == '2px':
         chi = Z**(3/2)*(r*Z)*torch.exp(-r*Z/2)*torch.sin(theta)
+        #print(chi)
+        #print(phi)
         if orbital_name == '2px':
-            chi *= torch.exp(torch.tensor([phi*1j]))
+            chi = chi.mul(torch.exp(phi*1j))
         else:
-            chi *= torch.exp(torch.tensor([-1*phi*1j]))
+            chi = chi.mul(torch.exp(-1*phi*1j))
     elif orbital_name == '3s':
         chi = Z**(3/2)*(27-18*(r*Z)+2*torch.pow(r*Z,2))*torch.exp(-r*Z/3)
     elif orbital_name == '3pz':
         chi = Z**(3/2)*(6*r-torch.pow(r*Z,2))*torch.exp(-r*Z/3)*torch.cos(theta)
     elif orbital_name == '3py' or orbital_name == '3px':
         chi = Z**(3/2)*(6*r-torch.pow(r*Z,2))*torch.exp(-r*Z/3)*torch.sin(theta)
-        if orbital_name == '2px':
-            chi *= torch.exp(torch.tensor([phi*1j]))
+        if orbital_name == '3px':
+            chi = chi.mul(torch.exp(phi*1j))
         else:
-            chi *= torch.exp(torch.tensor([-1*phi*1j]))
+            chi = chi.mul(torch.exp(-1*phi*1j))
+    #4s goes here
     elif orbital_name == '3dz2':
         chi = Z**(3/2)*torch.pow(r*Z,2)*torch.exp(-r*Z/3)*(3*torch.cos(theta)**2-1)
     elif orbital_name == '3dyz' or orbital_name == '3dxz':
         chi = Z**(3/2)*torch.pow(r*Z,2)*torch.exp(-r*Z/3)*torch.sin(theta)*torch.cos(theta)
         if orbital_name == '3dxz':
-            chi *= torch.exp(torch.tensor([phi*1j]))
+            chi = chi.mul(torch.exp(phi*1j))
         else: 
-            chi *= torch.exp(torch.tensor([-1*phi*1j]))
+            chi = chi.mul(torch.exp(-1*phi*1j))
     elif orbital_name == '3dxy' or orbital_name == '3dx2y2':
         chi = Z**(3/2)*torch.pow(r*Z,2)*torch.exp(-r*Z/3)*torch.sin(theta)**2
         if orbital_name == '3dx2y2':
-            chi *= torch.exp(torch.tensor([phi*1j]))
+            chi = chi.mul(torch.exp(phi*1j))
         else: 
-            chi *= torch.exp(torch.tensor([-1*phi*1j]))
+            chi = chi.mul(torch.exp(-1*phi*1j))
     else:
-        raise Exception("orbital_name invalid. A value of {} was entered. Allowed inputs:".format(orbital_name)+
-                        "'1s', '2s', '2px', '2py, '2pz', '3s', '3px', '3py', '3pz', '3dz2', '3dyz', '3dxz', '3dxy', '3dx2y2'.")
-            
+        raise ValueError("orbital_name invalid. A value of {} was entered. Allowed inputs:".format(orbital_name)+
+                         "'1s', '2s', '2px', '2py, '2pz', '3s', '3px', '3py', '3pz', '3dz2', '3dyz', '3dxz', '3dxy', '3dx2y2'.")
+    chi = chi.reshape(-1,1)
+    
     return chi
 
-def atomicUnit(x,y,z,Rx,Ry,Rz,Z):
+def atomicUnit(x,y,z,R,Ry,Rz,Z1,Z2):
     """
     Takes the 2 inputs r and R.
-    Z is the atomic number of the atom.
-    R is the position of the atom.
-    Returns the hydrogen atomic orbitals for the atom.
+    Z1 and Z2 is the atomic numbers of the atoms.
+    R is the positions of the atoms along x axis.
+    Returns the hydrogen atomic orbitals for the atoms in an array.
     """
-    
-    time_start = time.time()
-    
+
     #convert cartesian co-ordinates to polar
     #calculate the orbital
     #convert back to cartesian
     
     #cartesian translation and scaling
-    x1 = x - Rx
+    x1 = x - R
     y1 = y - Ry
     z1 = z - Rz
-    
-    #print(x)
                                
     rVec1 = torch.cat((x1,y1,z1),1)
-    print(rVec1)
-    #print(rVec0)
-    
-    #convert to radius
-    r1 = toR(rVec1)
     
     #covert to polar co-ords
+    r1 = toR(rVec1)
     theta1 = torch.arccos(z1/r1)
     phi1 = torch.sgn(y1)*torch.arccos(x1/(torch.pow(x1,2)+torch.pow(y1,2)))
     
-    phi_r1 = orbital(r1,theta1,phi1,Z,orbital_name='1s')
+    #for each relevant orbital calculate phi vector
     
-    print('LCAO Runtime (min):',(time.time()-time_start)/60)
+    chi = orbital(r1,theta1,phi1,Z1,orbital_name='1s')
     
-    return phi_r1
+    #Other atom
+    x2 = x + R
+    y2 = y - Ry
+    z2 = z - Rz
+                               
+    rVec2 = torch.cat((x2,y2,z2),1)
+    
+    #covert to polar co-ords
+    r2 = toR(rVec2)
+    theta2 = torch.arccos(z2/r2)
+    phi2 = torch.sgn(y2)*torch.arccos(x2/(torch.pow(x2,2)+torch.pow(y2,2)))
+    
+    chi = torch.cat((chi,orbital(r2,theta2,phi2,Z2,orbital_name='2s')),1)
+    
+    chi = torch.cat((chi,orbital(r2,theta2,phi2,Z2,orbital_name='2pz')),1)
+    
+    chi = torch.cat((chi,orbital(r2,theta2,phi2,Z2,orbital_name='2px')),1)
+    
+    chi = torch.cat((chi,orbital(r2,theta2,phi2,Z2,orbital_name='2py')),1)
+    
+    return chi
 
-def LCAO_Solution(fi_r1,fi_r2):
+def initial_LCAO_Solution(x,y,z,R,chi,Z1,Z2):
     """
-    Linearly combine atomic units.
+    Calculate the LCAO solution for the atomic orbitals given in chi.
+    Determine H_matrix which is NxN matrix where each entry H_ij is <chi_i|H|chi_j>
+    Determine S_matrix where each entry is <chi_i|chi_j>
+    Solve S^-1*H*c = E*c eigen equation
+    Return values of c and E
     """
-    return fi_r1 + fi_r2
-
-
-##############functions from original code
-def actAO_s(r):
-    return  torch.exp(-r)
-
-def atomicUnit_original(x,y,z,Rx,Ry,Rz):
-    """
-    Takes the 2 inputs r and R.
-    Returns the hydrogen atomic s-orbitals for each ion.
-    """
-    x1 = x - Rx; 
-    y1 = y - Ry 
-    z1 = z - Rz     # Cartesian Translation & Scaling: 
-    rVec1 = torch.cat((x1,y1,z1),1)
-    r1 = toR(rVec1) 
-    #print(x1)
-    fi_r1 = actAO_s(r1);  # s- ATOMIC ORBITAL ACTIVATION
-    print(x1)
-    print(rVec1)
-    print(r1)
-    print(fi_r1)
-    # -- 
-    x2 = x + Rx; 
-    y2 = y + Ry 
-    z2 = z + Rz        
-    rVec2=torch.cat((x2,y2,z2),1)
-    r2 = toR(rVec2);         
-    fi_r2 = actAO_s(r2)
+    time_start = time.time()
     
-    return fi_r1, fi_r2
-
-def integra3d(x,y,z, f):   
-    # 3d integration using Simpson method of scipy
-    f = f.detach().numpy()
-    x = x.detach().numpy()
-    y = y.detach().numpy()
-    z = z.detach().numpy()
-    I = simps( [simps( [simps(fx, x) for fx in fy], y) for fy in f ]  ,z)
-    return I
-
-def psi3d_norm(x,y,z,psi_,Ri,densePoints,dense_sampling=False,detachAll=True):
-
-    x=x.cpu(); y=y.cpu(); z=z.cpu(); 
-    x=x.ravel(); y=y.ravel(); z=z.ravel() ; 
-    xg, yg, zg= torch.meshgrid(x, y, z)
-    xgg = xg.reshape(-1,1); ygg = yg.reshape(-1,1); zgg = zg.reshape(-1,1)
-    Rt = Ri*torch.ones_like(xgg)
-
-    # NEURAL PSI
-    n_test = 80
-    psi = psi_.reshape(n_test,n_test,n_test)
-    # LCAO
-    fi_r1, fi_r2 = atomicUnit_original(xgg,ygg,zgg,Rt)  
-    psi_L_ = LCAO_Solution(fi_r1, fi_r2)
-    psi_L = psi_L_.reshape(n_test,n_test,n_test)
-
+    #calculate H and S
+    n_orbitals = chi.shape[1]
+    H = torch.zeros((n_orbitals,n_orbitals))
+    S = torch.zeros((n_orbitals,n_orbitals))
     
-    Npsi   = 1/np.sqrt(integra3d(x,y,z, (psi).pow(2)))
-    Npsi_L = 1/np.sqrt(integra3d(x,y,z, (psi_L).pow(2)))    
+    for i in range(0,n_orbitals):
+        for j in range(i+1):
+            print(i,j)
+            #print(chi[:,j])
+            H_chi = hamiltonian(x,y,z,R,chi[:,j].reshape(-1,1).real,Z1,Z2)
+            H[i,j] = torch.matmul(chi[:,j].real,H_chi)
+            H[j,i] = H[i,j]
+            
+            S[i,j] = torch.matmul(chi[:,i].real,chi[:,j].reshape(-1,1).real)
+            S[i,j] = S[j,i]
     
-    psi=psi*Npsi 
-    psi_L = psi_L * Npsi_L
+    #Solve eigen equation
+    print(H)
+    print(S)
+    S_inv = torch.linalg.inv(S)
+    S_inv_H = torch.matmul(S_inv,H)
     
-    if detachAll:
-        x,y,z = x.detach().numpy(),y.detach().numpy(),z.detach().numpy(), 
-        psi, psi_L= psi.detach().numpy(), psi_L.detach().numpy()
-    return x,y,z,psi,psi_L
+    #use torch.linalg.eig(MATRIX=S^-1H)
+    E, c = torch.linalg.eig(S_inv_H)
+    
+    print('Time to compute LCAO:',(time.time()-time_start)/60)
+    
+    return E, c
 
-def psiX_norm(x,y,z,Ri,dense_sampling=False, densePoints=200):
-    n_test = 80
-    x,y,z, psi, psi_L = psi3d_norm(Ri,densePoints,dense_sampling)
-    cN = int(n_test/2);
-    ps2 = (psi[:,:,cN]);     psiCut = ps2[:,cN].reshape(-1,1)
-    ps2_L = (psi_L[:,:,cN]); ps2_LCut = (ps2_L[:,cN]).reshape(-1,1)
-    return x, psiCut, ps2_LCut
-
-#########################################################
-
-#Rx, Ry and Rz are positions of atom
-Rx1 = -4
+#R, Ry and Rz are positions of atom
 Ry1 = 0
 Rz1 = 0
 
-Rx2 = 4
 Ry2 = 0
 Rz2 = 0
 
-x = torch.linspace(-10,10,1000)
-y = torch.linspace(-10,10,1000)
-z = torch.linspace(-10,10,1000)
+x = torch.linspace(-10,10,1000,requires_grad=True)
+y = torch.linspace(-10,10,1000,requires_grad=True)
+z = torch.linspace(-10,10,1000,requires_grad=True)
+R = torch.linspace(0.2,4,1000,requires_grad=True)
 
-Z = 1
+#H
+Z1 = 1
 
-x,y,z = x.reshape(-1,1), y.reshape(-1,1), z.reshape(-1,1)
+#O
+Z2 = 8
 
-xg, yg, zg = torch.meshgrid(x,y,z)
-#xgg = xg.reshape(-1,1) 
-#ygg = yg.reshape(-1,1)
-#zgg = zg.reshape(-1,1)
-print(xg)
+x,y,z,R = x.reshape(-1,1), y.reshape(-1,1), z.reshape(-1,1),R.reshape(-1,1)
 
-phi1 = atomicUnit(x,y,z,Rx1,Ry1,Rz1,Z)
-#print(phi1)
-phi2 = atomicUnit(x,y,z,Rx2,Ry2,Rz2,Z)
+chi = atomicUnit(x,y,z,R,Ry1,Rz1,Z1,Z2)
 
-#add and normalise
-Psi = (phi1 + phi2)#*(1/np.sqrt(2))
+c, E = initial_LCAO_Solution(x,y,z,R,chi,Z1,Z2)
 
-#plt.plot(x.cpu(),phi1.cpu())
-#plt.xlim(-5,5)
-#plt.ylabel('$|\Psi|$')
-#plt.xlabel('x')
-#plt.show()
-
-plt.plot(x.cpu(),Psi.cpu())
-plt.title('New')
-plt.xlim(-5,5)
-plt.ylabel('$|\Psi|$')
-plt.xlabel('x')
-plt.show()
-
-
-
-phi1,phi2 = atomicUnit_original(x,y,z,Rx1,Ry1,Rz1)
-#print(phi1)
-
-#add and normalise
-Psi = (phi1 + phi2)#*(1/np.sqrt(2))
-
-plt.plot(x.cpu(),phi1.cpu())
-plt.title('Original')
-#plt.xlim(-5,5)
-plt.ylabel('$|\Psi|$')
-plt.xlabel('x')
-plt.show()
-
-
-
-
+print(c,E)

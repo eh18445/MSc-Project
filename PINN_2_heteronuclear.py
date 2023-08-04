@@ -6,6 +6,8 @@ Created on Thu Aug  3 16:36:48 2023
 """
 
 ######################
+#first calculate the coefficients for the LCAO approx
+
 #Adapt so it functions for 2 different atom inputs
 
 import numpy as np
@@ -139,10 +141,11 @@ def orbital(r,theta,phi,Z,orbital_name):
         chi = Z**(3/2)*(6*r-torch.pow(r*Z,2))*torch.exp(-r*Z/3)*torch.cos(theta)
     elif orbital_name == '3py' or orbital_name == '3px':
         chi = Z**(3/2)*(6*r-torch.pow(r*Z,2))*torch.exp(-r*Z/3)*torch.sin(theta)
-        if orbital_name == '2px':
+        if orbital_name == '3px':
             chi = chi.mul(torch.exp(phi*1j))
         else:
             chi = chi.mul(torch.exp(-1*phi*1j))
+    #4s goes here
     elif orbital_name == '3dz2':
         chi = Z**(3/2)*torch.pow(r*Z,2)*torch.exp(-r*Z/3)*(3*torch.cos(theta)**2-1)
     elif orbital_name == '3dyz' or orbital_name == '3dxz':

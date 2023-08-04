@@ -12,6 +12,8 @@ Created on Fri Jul 28 14:07:24 2023
 #Change it so that there is an electron entering an orbital for an atom that is positive and the user specifies which orbital?
 #or might have to factor in hybridisation
 
+#user specifies the 2 atoms. Electrons will fill orbitals accordingly. Show the wavefunction of an added electron?
+
 import numpy as np
 import torch
 import torch.optim as optim
@@ -142,10 +144,11 @@ def orbital(r,theta,phi,Z,orbital_name):
         chi = Z**(3/2)*(6*r-torch.pow(r*Z,2))*torch.exp(-r*Z/3)*torch.cos(theta)
     elif orbital_name == '3py' or orbital_name == '3px':
         chi = Z**(3/2)*(6*r-torch.pow(r*Z,2))*torch.exp(-r*Z/3)*torch.sin(theta)
-        if orbital_name == '2px':
+        if orbital_name == '3px':
             chi = chi.mul(torch.exp(phi*1j))
         else:
             chi = chi.mul(torch.exp(-1*phi*1j))
+    #4s comes before 3d
     elif orbital_name == '3dz2':
         chi = Z**(3/2)*torch.pow(r*Z,2)*torch.exp(-r*Z/3)*(3*torch.cos(theta)**2-1)
     elif orbital_name == '3dyz' or orbital_name == '3dxz':
