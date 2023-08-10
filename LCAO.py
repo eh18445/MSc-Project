@@ -65,10 +65,14 @@ def V(x,y,z,R,Z1,Z2):
     #positions of each atom
     r1,r2 = radial(x,y,z,R)
     
-    #nuclear interaction
-    ##########!!!!!!!!!!!!!!!!!!Replace Z with effective potential
-    Z1_eff = 1
-    Z2_eff = 4.45
+    #effective nuclear charge
+    eff_charge = {1:1, 2:1.688, 3:1.279, 4:1.912, 5:2.421, 6:3.136, 7:3.834, 8:4.453, 9:5.1, 10:5.758,
+                  11:2.507, 12:3.308, 13:4.066, 14:4.285, 15:4.886, 16:5.482, 17:6.116, 18:6.764, 19:3.495, 20:4.398,
+                  21:7.12, 22:8.141, 23:8.983, 24:9.757, 25:10.582, 26:11.18, 27:11.855, 28:12.53, 29:13.201, 30:13.878}
+    
+    Z1_eff = eff_charge[Z1]
+    Z2_eff = eff_charge[Z2]
+    
     potential = -Z1_eff/r1 -Z2_eff/r2
    
     return potential
@@ -211,7 +215,7 @@ def atomicUnit(x,y,z,R,Ry,Rz,Z1,Z2):
     
     return chi
 
-def initial_LCAO_Solution(x,y,z,R,chi,Z1,Z2):
+def LCAO_Solution(x,y,z,R,chi,Z1,Z2):
     """
     Calculate the LCAO solution for the atomic orbitals given in chi.
     Determine H_matrix which is NxN matrix where each entry H_ij is <chi_i|H|chi_j>
@@ -228,7 +232,7 @@ def initial_LCAO_Solution(x,y,z,R,chi,Z1,Z2):
     
     for i in range(0,n_orbitals):
         for j in range(i+1):
-            print(i,j)
+            #print(i,j)
             #print(chi[:,j])
             H_chi = hamiltonian(x,y,z,R,chi[:,j].reshape(-1,1).real,Z1,Z2)
             H[i,j] = torch.matmul(chi[:,j].real,H_chi)
@@ -272,6 +276,6 @@ x,y,z,R = x.reshape(-1,1), y.reshape(-1,1), z.reshape(-1,1),R.reshape(-1,1)
 
 chi = atomicUnit(x,y,z,R,Ry1,Rz1,Z1,Z2)
 
-c, E = initial_LCAO_Solution(x,y,z,R,chi,Z1,Z2)
+c, E = LCAO_Solution(x,y,z,R,chi,Z1,Z2)
 
 print(c,E)

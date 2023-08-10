@@ -83,7 +83,7 @@ def set_params():
     
     #number of protons in nucleus
     params['Z1'] = 1
-    params['Z2'] = 1
+    params['Z2'] = 8
     #number of electrons
     params['N_electrons'] = params['Z1'] + params['Z2']
 
@@ -145,7 +145,8 @@ def orbital(r,theta,phi,Z,orbital_name):
             chi = chi.mul(torch.exp(phi*1j))
         else:
             chi = chi.mul(torch.exp(-1*phi*1j))
-    #4s goes here
+    elif orbital_name == '4s':
+        chi = Z**(3/2)*(Z*r-1)*((Z*r)**2*-8*(Z*r)+12)*torch.exp(-Z*r)
     elif orbital_name == '3dz2':
         chi = Z**(3/2)*torch.pow(r*Z,2)*torch.exp(-r*Z/3)*(3*torch.cos(theta)**2-1)
     elif orbital_name == '3dyz' or orbital_name == '3dxz':
@@ -169,13 +170,12 @@ def orbital(r,theta,phi,Z,orbital_name):
 
 class atomicAct(torch.nn.Module):
     @staticmethod
-    def forward(polarVec,params):
+    def forward(polarVec,Z):
         """
         Input vector in polar co-ordinates.
         Sums together the different atomic orbitals for the atom.
         Returns atomic orbitals for atom.
         """
-        Z = params['Z']
         orbital_list = ['1s','2s','2pz','2px','2py','3s','3pz','3py','3px','3dz2','3dyz','3dxz','3dxy','3dx2y2']
         
         AO_sum = torch.zeros(len(polarVec))
@@ -249,9 +249,10 @@ def radial(x,y,z,R,params):
     Rz = params['Rz']
     r1 = torch.sqrt((x-Rx).pow(2)+(y-Ry).pow(2)+(z-Rz).pow(2))
     r2 = torch.sqrt((x+Rx).pow(2)+(y+Ry).pow(2)+(z+Rz).pow(2))
+    
     return r1, r2
 
-def V(x,y,z,R,orbArray,params):
+def V(x,y,z,R,params):
     """
     Potential energy function.
     For each electron calculate coulomb potential from all other electrons
@@ -259,41 +260,24 @@ def V(x,y,z,R,orbArray,params):
     #positions of each atom
     r1,r2 = radial(x,y,z,R,params)
     
-    #nuclear interaction
-    potential = -params['Z']/r1 -params['Z']/r2
+    #effective nuclear charge
+    eff_charge = {1:1, 2:1.688, 3:1.279, 4:1.912, 5:2.421, 6:3.136, 7:3.834, 8:4.453, 9:5.1, 10:5.758,
+                  11:2.507, 12:3.308, 13:4.066, 14:4.285, 15:4.886, 16:5.482, 17:6.116, 18:6.764, 19:3.495, 20:4.398,
+                  21:7.12, 22:8.141, 23:8.983, 24:9.757, 25:10.582, 26:11.18, 27:11.855, 28:12.53, 29:13.201, 30:13.878}
     
-    #repulsion from other electrons
-    #Hartree Fock integral
-    # SS |Chi_i|^2 * 1/r_ij * |Chi_j|^2 dr_i dr_j for each orbital chi_i and chi_j
-    #Needs to be calculated for each orbital in molecule
+    Z1_eff = eff_charge[params['Z1']]
+    Z2_eff = eff_charge[params['Z2']]
     
-    #r_ij is distance between r_i and r_j
-    r_ij = torch.abs(r1-r2)
-    r1 = r1.cpu().detach().numpy()
-    r2 = r2.cpu().detach().numpy()
-    
-    for i in range(1,orbArray.shape[1]):
-        for j in range(0,i):
-            chi_i = orbArray[:,i].abs().pow(2)
-            chi_j = orbArray[:,j].abs().pow(2)
-            chi_i = chi_i.reshape(-1,1); chi_j = chi_j.reshape(-1,1)
-            
-            f = chi_i * 1/r_ij * chi_j
-            
-            #needs to integrate over r1 and r2
-            f = f.cpu().detach().numpy()
-            f2 = simps(f, r1)
-            f2 = f2.reshape(-1,1)
-            potential += torch.tensor(simps(f2,r2).reshape(-1,1))
+    potential = -Z1_eff/r1 -Z2_eff/r2
    
     return potential
     
-def hamiltonian(x,y,z,R,psi,orbArray,params):
+def hamiltonian(x,y,z,R,psi,params):
     """
     Returns Hamiltonian for this setup
     """
     laplacian = lapl(x,y,z,psi)        
-    return  -0.5*laplacian + V(x,y,z,R,orbArray,params)*psi
+    return  -0.5*laplacian + V(x,y,z,R,params)*psi
         
 ## Misc helper functions 
 
@@ -391,6 +375,8 @@ class NN_atom(nn.Module):
 
         self.Ry = params['Ry'] 
         self.Rz = params['Rz']
+        self.Z1 = params['Z1']
+        self.Z2 = params['Z2']
         self.P = params['inversion_symmetry']
         self.netDecayL = torch.nn.Linear(1, netDecay_neurons, bias=True)  
         self.netDecay = torch.nn.Linear(netDecay_neurons, 1, bias=True)  
@@ -407,11 +393,17 @@ class NN_atom(nn.Module):
         fi_r1,  fi_r2, orbArray = self.atomicUnit(x,y,z,R)        
         fi_r1m, fi_r2m, orbArraym = self.atomicUnit(-x,y,z,R)  
         
+        print(orbArray.shape)
+        
         ## LCAO SOLUTION
-        N_LCAO = self.lcao_solution(fi_r1,fi_r2)
+        #N_LCAO = self.lcao_solution(fi_r1,fi_r2)
+        N_LCAO = self.lcao_solution2(x,y,z,R,orbArray)
+        
+        print(N_LCAO.shape)
         
         ## NONLINEAR HIDDEN LAYERS        
         B  = self.base(fi_r1,fi_r2) + self.P*self.base(fi_r1m,fi_r2m)
+        #B  = self.base2(fi_r1,fi_r2) + self.P*self.base2(fi_r1m,fi_r2m)
         NN = self.Lin_out(B)
     
         f = self.netDecayL(R)
@@ -440,7 +432,7 @@ class NN_atom(nn.Module):
         polarVec1 = torch.cat((r1,theta1,phi1),1)
         
         # ATOMIC ORBITAL ACTIVATION
-        fi_r1, orbArray1 = self.actAO(polarVec1,params) 
+        fi_r1, orbArray1 = self.actAO(polarVec1,self.Z1) 
 
         # -- 
         x2 = x + R; 
@@ -452,7 +444,7 @@ class NN_atom(nn.Module):
         phi2 = self.toPhi(rVec2)
         polarVec2 = torch.cat((r2,theta2,phi2),1)
         
-        fi_r2, orbArray2 = self.actAO(polarVec2,params)
+        fi_r2, orbArray2 = self.actAO(polarVec2,self.Z2)
         
         orbArray = torch.cat((orbArray1,orbArray2),1)
         
@@ -471,9 +463,53 @@ class NN_atom(nn.Module):
 
         return N_LCAO
     
+    def lcao_solution2(self,x,y,z,R,orbArray):
+        """
+        Calculate the LCAO solution for the atomic orbitals given in chi.
+        Determine H_matrix which is NxN matrix where each entry H_ij is <chi_i|H|chi_j>
+        Determine S_matrix where each entry is <chi_i|chi_j>
+        Solve S^-1*H*c = E*c eigen equation
+        Return values of c and E
+        """
+        
+        #calculate H and S
+        n_orbitals = orbArray.shape[1]
+        H = torch.zeros((n_orbitals,n_orbitals))
+        S = torch.zeros((n_orbitals,n_orbitals))
+        
+        for i in range(0,n_orbitals):
+            for j in range(i+1):
+                #print(i,j)
+                #print(chi[:,j])
+                print(orbArray[:,j].reshape(-1))
+                H_chi = hamiltonian(x,y,z,R,orbArray[:,j].reshape(-1,1).real,params)
+                H[i,j] = torch.matmul(orbArray[:,j].real,H_chi)
+                H[j,i] = H[i,j]
+                #print(H)
+                
+                S[i,j] = torch.matmul(orbArray[:,i].real,orbArray[:,j].reshape(-1,1).real)
+                S[i,j] = S[j,i]
+                #print(S)
+        
+        #Solve eigen equation
+        S_inv = torch.linalg.inv(S)
+        S_inv_H = torch.matmul(S_inv,H)
+        
+        #use torch.linalg.eig(MATRIX=S^-1H)
+        print(S_inv_H)
+        E, c = torch.linalg.eig(S_inv_H)
+        
+        #Now perform linear sum
+        lcao = torch.mul(c[0],orbArray[:,0])
+        for i in range(1,n_orbitals):
+            lcao = torch.add(lcao,torch.mul(c[0],orbArray[:,0]))
+        
+        return lcao
+    
     def base(self,fi_r1,fi_r2):
         ## NONLINEAR HIDDEN LAYERS; Black box
         fi_r = torch.cat((fi_r1,fi_r2),1)   
+        print(fi_r)
         
         #take only the real part of atomic units
         fi_r = fi_r.real
@@ -482,6 +518,18 @@ class NN_atom(nn.Module):
         fi_r = self.Lin_H2(fi_r);         fi_r = self.sig(fi_r) 
         #fi_r = self.Lin_H3(fi_r);         fi_r = self.sig(fi_r) 
         return fi_r
+    
+    def base2(self,orbArray):
+        """
+        NONLINEAR HIDDEN LAYERS; Black box
+        """
+        #take only the real part of atomic units
+        orbArray = orbArray.real
+        
+        orbArray = self.Lin_H1(orbArray);         orbArray = self.sig(orbArray) 
+        orbArray = self.Lin_H2(orbArray);         orbArray = self.sig(orbArray) 
+        #orbArray = self.Lin_H3(orbArray);         orbArray = self.sig(orbArray) 
+        return orbArray
         
     def freezeBase(self):
         #for p in self.parameters():
@@ -544,7 +592,7 @@ def train(params,loadWeights=False,freezeUnits=False,optimiser='Adam'):
         optimizer = optim.SGD(model.parameters(), lr=lr, momentum=0.5)
         print('Train with SGD')
     
-    print('Setup is 2 atoms with atomic number {}.'.format(params['Z']))
+    print('Setup is 2 atoms with atomic numbers {} and {}.'.format(params['Z1'],params['Z2']))
     
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer,step_size=params['sc_step'],gamma=params['sc_decay'])    
     Llim =  10 ; optEpoch=0    
@@ -625,11 +673,12 @@ params = set_params()
 
 params['epochs'] = int(5e3) 
 nEpoch1 = params['epochs']
-params['n_train'] = 100000 
+params['n_train'] = 10000
 params['lr'] = 8e-3
 params['Z1'] = 1
-params['Z2'] = 2
+params['Z2'] = 8
 params['N_electrons'] = params['Z1'] + params['Z2']
+
 #################
 model = NN_atom(params)
 
