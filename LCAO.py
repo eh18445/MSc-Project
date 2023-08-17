@@ -108,7 +108,7 @@ def hamiltonian(x,y,z,R,psi,Z1,Z2):
     """
     Returns Hamiltonian for this setup
     """
-    laplacian = lapl(x,y,z,psi)        
+    laplacian = lapl(x,y,z,psi)    
     return  -0.5*laplacian + V(x,y,z,R,Z1,Z2)*psi
         
     
@@ -127,8 +127,6 @@ def orbital(r,theta,phi,Z,orbital_name):
         chi = Z**(3/2)*(r*Z)*torch.exp(-r*Z/2)*torch.cos(theta)
     elif orbital_name == '2py' or orbital_name == '2px':
         chi = Z**(3/2)*(r*Z)*torch.exp(-r*Z/2)*torch.sin(theta)
-        #print(chi)
-        #print(phi)
         if orbital_name == '2px':
             chi = chi.mul(torch.exp(phi*1j))
         else:
@@ -163,7 +161,7 @@ def orbital(r,theta,phi,Z,orbital_name):
                          "'1s', '2s', '2px', '2py, '2pz', '3s', '3px', '3py', '3pz', '3dz2', '3dyz', '3dxz', '3dxy', '3dx2y2'.")
     chi = chi.reshape(-1,1)
     
-    return chi
+    return chi.real
 
 def atomicUnit(x,y,z,R,Ry,Rz,Z1,Z2):
     """
@@ -205,6 +203,8 @@ def atomicUnit(x,y,z,R,Ry,Rz,Z1,Z2):
     theta2 = torch.arccos(z2/r2)
     phi2 = torch.sgn(y2)*torch.arccos(x2/(torch.pow(x2,2)+torch.pow(y2,2)))
     
+    chi = torch.cat((chi,orbital(r2,theta2,phi2,Z2,orbital_name='1s')),1)
+    
     chi = torch.cat((chi,orbital(r2,theta2,phi2,Z2,orbital_name='2s')),1)
     
     chi = torch.cat((chi,orbital(r2,theta2,phi2,Z2,orbital_name='2pz')),1)
@@ -225,6 +225,8 @@ def LCAO_Solution(x,y,z,R,chi,Z1,Z2):
     """
     time_start = time.time()
     
+    print(chi.shape)
+    
     #calculate H and S
     n_orbitals = chi.shape[1]
     H = torch.zeros((n_orbitals,n_orbitals))
@@ -233,12 +235,15 @@ def LCAO_Solution(x,y,z,R,chi,Z1,Z2):
     for i in range(0,n_orbitals):
         for j in range(i+1):
             #print(i,j)
-            #print(chi[:,j])
-            H_chi = hamiltonian(x,y,z,R,chi[:,j].reshape(-1,1).real,Z1,Z2)
-            H[i,j] = torch.matmul(chi[:,j].real,H_chi)
+            print(chi[:,j])
+            #######TYhis is supposed tpo be integrasated!!!!
+            H_chi = hamiltonian(x,y,z,R,chi[:,j].reshape(-1,1),Z1,Z2)
+            print('<chi|:',chi[:,j])
+            print('H|chi>:',H_chi)
+            H[i,j] = torch.matmul(chi[:,j],H_chi)
             H[j,i] = H[i,j]
-            
-            S[i,j] = torch.matmul(chi[:,i].real,chi[:,j].reshape(-1,1).real)
+            print('<chi|H|chi>',H[i,j])
+            S[i,j] = torch.matmul(chi[:,i],chi[:,j].reshape(-1,1))
             S[i,j] = S[j,i]
     
     #Solve eigen equation
@@ -252,7 +257,7 @@ def LCAO_Solution(x,y,z,R,chi,Z1,Z2):
     
     print('Time to compute LCAO:',(time.time()-time_start)/60)
     
-    return E, c
+    return E.real, c.real
 
 #R, Ry and Rz are positions of atom
 Ry1 = 0
@@ -261,10 +266,10 @@ Rz1 = 0
 Ry2 = 0
 Rz2 = 0
 
-x = torch.linspace(-10,10,1000,requires_grad=True)
-y = torch.linspace(-10,10,1000,requires_grad=True)
-z = torch.linspace(-10,10,1000,requires_grad=True)
-R = torch.linspace(0.2,4,1000,requires_grad=True)
+x = torch.linspace(-10,10,10000,requires_grad=True)
+y = torch.linspace(-10,10,10000,requires_grad=True)
+z = torch.linspace(-10,10,10000,requires_grad=True)
+R = torch.linspace(0.2,4,10000,requires_grad=True)
 
 #H
 Z1 = 1
@@ -276,6 +281,21 @@ x,y,z,R = x.reshape(-1,1), y.reshape(-1,1), z.reshape(-1,1),R.reshape(-1,1)
 
 chi = atomicUnit(x,y,z,R,Ry1,Rz1,Z1,Z2)
 
-c, E = LCAO_Solution(x,y,z,R,chi,Z1,Z2)
+E, c = LCAO_Solution(x,y,z,R,chi,Z1,Z2)
 
-print(c,E)
+print('c',c,'E',E)
+print(c[:,0],chi[:,0])
+
+#6 different solutions
+
+
+
+n_orbitals = chi.shape[1]
+for i in range(n_orbitals):
+    lcao = c[i,0]*chi[:,0]
+    for j in range(1,n_orbitals):
+        print(i,j,c[j,i])
+        lcao = torch.add(lcao,c[j,i]*chi[:,j])
+        
+    print(lcao)
+

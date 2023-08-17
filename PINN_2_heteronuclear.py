@@ -163,7 +163,7 @@ def orbital(r,theta,phi,Z,orbital_name):
             chi = chi.mul(torch.exp(-1*phi*1j))
     else:
         raise ValueError("orbital_name invalid. A value of {} was entered. Allowed inputs:".format(orbital_name)+
-                         "'1s', '2s', '2px', '2py, '2pz', '3s', '3px', '3py', '3pz', '3dz2', '3dyz', '3dxz', '3dxy', '3dx2y2'.")
+                         "'1s', '2s', '2px', '2py, '2pz', '3s', '3px', '3py', '3pz', '3dz2', '3dyz', '3dxz', '3dxy', '3dx2y2', '4s'.")
     chi = chi.reshape(-1,1)
 
     return chi
@@ -183,36 +183,33 @@ class atomicAct(torch.nn.Module):
         
         #fill Z electron orbitals
         #!!!!!!!!!!!!!!!Only works up to Z=9 currently
-        for i in range(Z):    
-            if i <= 1: 
-                #1s
-                orb = orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name=orbital_list[0])
-                AO_sum = AO_sum.add(orb)
-                #orbArray will contain all the orbitals so the can be used to calculate the coulomb potential
-                if i == 0:
-                    orbArray = orb
-                else:
-                    orbArray = torch.cat((orbArray,orb),1)
-            elif i <= 3:
-                #2s
-                orb = orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name=orbital_list[1])
-                AO_sum = AO_sum.add(orb)
-                orbArray = torch.cat((orbArray,orb),1)
-            elif i == 4 or i == 7:
-                #2pz
-                orb = orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name=orbital_list[2])
-                AO_sum = AO_sum.add(orb)
-                orbArray = torch.cat((orbArray,orb),1)
-            elif i == 5 or i == 8:
-                #2px
-                orb = orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name=orbital_list[3])
-                AO_sum = AO_sum.add(orb)
-                orbArray = torch.cat((orbArray,orb),1)
-            elif i == 6 or i == 9:
-                #2py
-                orb = orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name=orbital_list[4])
-                AO_sum = AO_sum.add(orb)
-                orbArray = torch.cat((orbArray,orb),1)
+        #!!!!!!!!!!!!!If electron canm be in one p-orbital include all of them
+        if Z > 0: 
+            #1s
+            orbArray = orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name=orbital_list[0])
+            AO_sum = AO_sum.add(orbArray)
+                
+        if Z >= 3:
+            #2s
+            orb = orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name=orbital_list[1])
+            AO_sum = AO_sum.add(orb)
+            orbArray = torch.cat((orbArray,orb),1)
+            
+        if Z >= 5:
+            #2pz
+            orb = orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name=orbital_list[2])
+            AO_sum = AO_sum.add(orb)
+            orbArray = torch.cat((orbArray,orb),1)
+            
+            #2px
+            orb = orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name=orbital_list[3])
+            AO_sum = AO_sum.add(orb)
+            orbArray = torch.cat((orbArray,orb),1)
+            
+            #2py
+            orb = orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name=orbital_list[4])
+            AO_sum = AO_sum.add(orb)
+            orbArray = torch.cat((orbArray,orb),1)
         
         return  AO_sum, orbArray
 
@@ -269,14 +266,14 @@ def V(x,y,z,R,params):
     Z2_eff = eff_charge[params['Z2']]
     
     potential = -Z1_eff/r1 -Z2_eff/r2
-   
+    
     return potential
     
 def hamiltonian(x,y,z,R,psi,params):
     """
     Returns Hamiltonian for this setup
     """
-    laplacian = lapl(x,y,z,psi)        
+    laplacian = lapl(x,y,z,psi)
     return  -0.5*laplacian + V(x,y,z,R,params)*psi
         
 ## Misc helper functions 
@@ -393,13 +390,13 @@ class NN_atom(nn.Module):
         fi_r1,  fi_r2, orbArray = self.atomicUnit(x,y,z,R)        
         fi_r1m, fi_r2m, orbArraym = self.atomicUnit(-x,y,z,R)  
         
-        print(orbArray.shape)
+        #print(orbArray.shape)
         
         ## LCAO SOLUTION
         #N_LCAO = self.lcao_solution(fi_r1,fi_r2)
         N_LCAO = self.lcao_solution2(x,y,z,R,orbArray)
         
-        print(N_LCAO.shape)
+        #print(N_LCAO.shape)
         
         ## NONLINEAR HIDDEN LAYERS        
         B  = self.base(fi_r1,fi_r2) + self.P*self.base(fi_r1m,fi_r2m)
@@ -471,6 +468,7 @@ class NN_atom(nn.Module):
         Solve S^-1*H*c = E*c eigen equation
         Return values of c and E
         """
+        print(x[0])
         
         #calculate H and S
         n_orbitals = orbArray.shape[1]
@@ -480,29 +478,50 @@ class NN_atom(nn.Module):
         for i in range(0,n_orbitals):
             for j in range(i+1):
                 #print(i,j)
-                #print(chi[:,j])
-                print(orbArray[:,j].reshape(-1))
+                #print(orbArray[:,j])
+                #print(orbArray[:,j].reshape(-1))
+                
+                ##############This is supposed to be integrated!!!!!!!!
                 H_chi = hamiltonian(x,y,z,R,orbArray[:,j].reshape(-1,1).real,params)
+                #print('<chi|',orbArray[457,j].real)
+                #print('H|chi>',H_chi[457])
+                
+                jam = torch.isnan(H_chi)
+                if True in jam:
+                    nan_array = []
+                    num_nan = 0
+                    for l in range(len(jam)):
+                        if jam[l] == True:
+                            nan_array.append(l)
+                            num_nan += 1
+                    print('{}{} contains {} nan values'.format(i,j,num_nan))
+                    print(nan_array)
+                    
+                    #for n in range(len(nan_array)):
+                        #print('|chi>',orbArray[n,j].reshape(-1,1).real)
+                        #print('H|chi>', nan_array[n], H_chi[nan_array[n]])
+                
                 H[i,j] = torch.matmul(orbArray[:,j].real,H_chi)
+                #print('<chi|H|chi>',H[i,j])
                 H[j,i] = H[i,j]
-                #print(H)
                 
                 S[i,j] = torch.matmul(orbArray[:,i].real,orbArray[:,j].reshape(-1,1).real)
                 S[i,j] = S[j,i]
-                #print(S)
         
         #Solve eigen equation
+        print(H)
+        print(S)
         S_inv = torch.linalg.inv(S)
         S_inv_H = torch.matmul(S_inv,H)
         
         #use torch.linalg.eig(MATRIX=S^-1H)
-        print(S_inv_H)
         E, c = torch.linalg.eig(S_inv_H)
         
         #Now perform linear sum
+        print(E.shape,c.shape,orbArray.shape)
         lcao = torch.mul(c[0],orbArray[:,0])
         for i in range(1,n_orbitals):
-            lcao = torch.add(lcao,torch.mul(c[0],orbArray[:,0]))
+            lcao = torch.add(lcao,torch.mul(c[i],orbArray[:,i]))
         
         return lcao
     
@@ -570,12 +589,12 @@ class NN_atom(nn.Module):
         #--# PDE       
         res = hamiltonian(x,y,z,R,psi,orbArray,params) - E*psi                
         LossPDE = (res.pow(2)).mean() * lam_pde
-        Ltot= LossPDE         
+        Ltot = LossPDE         
         #--# BC
         Lbc =  lam_bc *( (psi[bIndex1].pow(2)).mean() 
                + (psi[bIndex2].pow(2)).mean() )
 
-        Ltot= LossPDE + Lbc
+        Ltot = LossPDE + Lbc
         # 
         #--# Trivial
         # Ltriv = 1/(psi.pow(2)).mean()* lam_tr ;    Ltot = Ltot + Ltriv 
@@ -617,7 +636,14 @@ def train(params,loadWeights=False,freezeUnits=False,optimiser='Adam'):
     TeP0 = time.time() # for counting the training time
         
     n_points = params['n_train'] # the training batch size
-    x,y,z,R = sampling(params,n_points,linearSampling=False)
+    
+    #Sample Inputs
+    x = torch.linspace(-10,10,10000,requires_grad=True)
+    y = torch.linspace(-10,10,10000,requires_grad=True)
+    z = torch.linspace(-10,10,10000,requires_grad=True)
+    R = torch.linspace(0.2,4,10000,requires_grad=True)
+    x=x.reshape((-1,1)); y=y.reshape((-1,1)); z=z.reshape((-1,1)); R=R.reshape((-1,1))
+    #x,y,z,R = sampling(params,n_points,linearSampling=False)
     
     #r1,r2 = radial(x, y, z,R, params)
     #bIndex1 = torch.where(r1 >= params['BCcutoff'])
@@ -629,8 +655,8 @@ def train(params,loadWeights=False,freezeUnits=False,optimiser='Adam'):
     for tt in range(epochs):        
         optimizer.zero_grad()
         
-        if tt % params['sc_sampling']==0 and tt < 0.9*epochs:
-            x,y,z,R = sampling(params, n_points, linearSampling=False)            
+        if tt % params['sc_sampling'] == 0 and tt < 0.9*epochs:
+            #x,y,z,R = sampling(params, n_points, linearSampling=False)            
             r1,r2 = radial(x,y,z,R,params)
             bIndex1 = torch.where(r1 >= params['BCcutoff'])
             bIndex2 = torch.where(r2 >= params['BCcutoff'])        
