@@ -110,7 +110,100 @@ def hamiltonian(x,y,z,R,psi,Z1,Z2):
     """
     laplacian = lapl(x,y,z,psi)    
     return  -0.5*laplacian + V(x,y,z,R,Z1,Z2)*psi
+
+def atomicAct(polarVec,Z):
+    """
+    Input vector in polar co-ordinates.
+    Sums together the different atomic orbitals for the atom.
+    Returns atomic orbitals for atom.
+    """
+    AO_sum = torch.zeros(len(polarVec))
+    AO_sum = AO_sum.reshape(-1,1)
+    
+    #fill Z electron orbitals
+    #Only works up to Z=30 currently
+    if Z > 0: 
+        #1s
+        orbArray = orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name='1s')
+        AO_sum = AO_sum.add(orbArray)
+            
+    if Z >= 3:
+        #2s
+        orb = orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name='2s')
+        AO_sum = AO_sum.add(orb)
+        orbArray = torch.cat((orbArray,orb),1)
         
+    if Z >= 5:
+        #2pz
+        orb = orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name='2pz')
+        AO_sum = AO_sum.add(orb)
+        orbArray = torch.cat((orbArray,orb),1)
+        
+        #2px
+        orb = orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name='2px')
+        AO_sum = AO_sum.add(orb)
+        orbArray = torch.cat((orbArray,orb),1)
+        
+        #2py
+        orb = orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name='2py')
+        AO_sum = AO_sum.add(orb)
+        orbArray = torch.cat((orbArray,orb),1)
+        
+    if Z >= 11:
+        #3s
+        orb = orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name='3s')
+        AO_sum = AO_sum.add(orb)
+        orbArray = torch.cat((orbArray,orb),1)
+        
+    if Z >= 13:
+        #3pz
+        orb = orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name='3pz')
+        AO_sum = AO_sum.add(orb)
+        orbArray = torch.cat((orbArray,orb),1)
+        
+        #3px
+        orb = orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name='3px')
+        AO_sum = AO_sum.add(orb)
+        orbArray = torch.cat((orbArray,orb),1)
+        
+        #3py
+        orb = orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name='3py')
+        AO_sum = AO_sum.add(orb)
+        orbArray = torch.cat((orbArray,orb),1)
+        
+    if Z >= 19:
+        #4s
+        orb = orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name='4s')
+        AO_sum = AO_sum.add(orb)
+        orbArray = torch.cat((orbArray,orb),1)
+        
+    if Z >= 21:
+        #3dz2
+        orb = orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name='3dz2')
+        AO_sum = AO_sum.add(orb)
+        orbArray = torch.cat((orbArray,orb),1)
+        
+        #3dyz
+        orb = orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name='3dyz')
+        AO_sum = AO_sum.add(orb)
+        orbArray = torch.cat((orbArray,orb),1)
+        
+        #3dxz
+        orb = orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name='3dxz')
+        AO_sum = AO_sum.add(orb)
+        orbArray = torch.cat((orbArray,orb),1)
+        
+        #3dxy
+        orb = orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name='3dxy')
+        AO_sum = AO_sum.add(orb)
+        orbArray = torch.cat((orbArray,orb),1)
+        
+        #3dx2y2
+        orb = orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name='3dx2y2')
+        AO_sum = AO_sum.add(orb)
+        orbArray = torch.cat((orbArray,orb),1)
+    
+    return  AO_sum, orbArray        
     
 def orbital(r,theta,phi,Z,orbital_name):
     """
@@ -141,7 +234,8 @@ def orbital(r,theta,phi,Z,orbital_name):
             chi = chi.mul(torch.exp(phi*1j))
         else:
             chi = chi.mul(torch.exp(-1*phi*1j))
-    #4s goes here
+    elif orbital_name == '4s':
+        chi = Z**(3/2)*(Z*r-1)*((Z*r)**2*-8*(Z*r)+12)*torch.exp(-Z*r)
     elif orbital_name == '3dz2':
         chi = Z**(3/2)*torch.pow(r*Z,2)*torch.exp(-r*Z/3)*(3*torch.cos(theta)**2-1)
     elif orbital_name == '3dyz' or orbital_name == '3dxz':
@@ -186,10 +280,10 @@ def atomicUnit(x,y,z,R,Ry,Rz,Z1,Z2):
     r1 = toR(rVec1)
     theta1 = torch.arccos(z1/r1)
     phi1 = torch.sgn(y1)*torch.arccos(x1/(torch.pow(x1,2)+torch.pow(y1,2)))
+    polarVec1 = torch.cat((r1,theta1,phi1),1)
     
     #for each relevant orbital calculate phi vector
-    
-    chi = orbital(r1,theta1,phi1,Z1,orbital_name='1s')
+    fi_r1, orbArray1 = atomicAct(polarVec1,Z1) 
     
     #Other atom
     x2 = x + R
@@ -202,18 +296,13 @@ def atomicUnit(x,y,z,R,Ry,Rz,Z1,Z2):
     r2 = toR(rVec2)
     theta2 = torch.arccos(z2/r2)
     phi2 = torch.sgn(y2)*torch.arccos(x2/(torch.pow(x2,2)+torch.pow(y2,2)))
+    polarVec2 = torch.cat((r2,theta2,phi2),1)
     
-    chi = torch.cat((chi,orbital(r2,theta2,phi2,Z2,orbital_name='1s')),1)
+    fi_r2, orbArray2 = atomicAct(polarVec2,Z2) 
     
-    chi = torch.cat((chi,orbital(r2,theta2,phi2,Z2,orbital_name='2s')),1)
+    orbArray = torch.cat((orbArray1,orbArray2),1)
     
-    chi = torch.cat((chi,orbital(r2,theta2,phi2,Z2,orbital_name='2pz')),1)
-    
-    chi = torch.cat((chi,orbital(r2,theta2,phi2,Z2,orbital_name='2px')),1)
-    
-    chi = torch.cat((chi,orbital(r2,theta2,phi2,Z2,orbital_name='2py')),1)
-    
-    return chi
+    return orbArray
 
 def LCAO_Solution(x,y,z,R,chi,Z1,Z2):
     """
@@ -275,7 +364,7 @@ R = torch.linspace(0.2,4,10000,requires_grad=True)
 Z1 = 1
 
 #O
-Z2 = 8
+Z2 = 1
 
 x,y,z,R = x.reshape(-1,1), y.reshape(-1,1), z.reshape(-1,1),R.reshape(-1,1)
 

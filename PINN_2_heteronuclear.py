@@ -176,38 +176,89 @@ class atomicAct(torch.nn.Module):
         Sums together the different atomic orbitals for the atom.
         Returns atomic orbitals for atom.
         """
-        orbital_list = ['1s','2s','2pz','2px','2py','3s','3pz','3py','3px','3dz2','3dyz','3dxz','3dxy','3dx2y2']
-        
         AO_sum = torch.zeros(len(polarVec))
         AO_sum = AO_sum.reshape(-1,1)
         
         #fill Z electron orbitals
-        #!!!!!!!!!!!!!!!Only works up to Z=9 currently
-        #!!!!!!!!!!!!!If electron canm be in one p-orbital include all of them
+        #Only works up to Z=30 currently
         if Z > 0: 
             #1s
-            orbArray = orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name=orbital_list[0])
+            orbArray = orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name='1s')
             AO_sum = AO_sum.add(orbArray)
                 
         if Z >= 3:
             #2s
-            orb = orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name=orbital_list[1])
+            orb = orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name='2s')
             AO_sum = AO_sum.add(orb)
             orbArray = torch.cat((orbArray,orb),1)
             
         if Z >= 5:
             #2pz
-            orb = orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name=orbital_list[2])
+            orb = orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name='2pz')
             AO_sum = AO_sum.add(orb)
             orbArray = torch.cat((orbArray,orb),1)
             
             #2px
-            orb = orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name=orbital_list[3])
+            orb = orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name='2px')
             AO_sum = AO_sum.add(orb)
             orbArray = torch.cat((orbArray,orb),1)
             
             #2py
-            orb = orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name=orbital_list[4])
+            orb = orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name='2py')
+            AO_sum = AO_sum.add(orb)
+            orbArray = torch.cat((orbArray,orb),1)
+            
+        if Z >= 11:
+            #3s
+            orb = orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name='3s')
+            AO_sum = AO_sum.add(orb)
+            orbArray = torch.cat((orbArray,orb),1)
+            
+        if Z >= 13:
+            #3pz
+            orb = orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name='3pz')
+            AO_sum = AO_sum.add(orb)
+            orbArray = torch.cat((orbArray,orb),1)
+            
+            #3px
+            orb = orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name='3px')
+            AO_sum = AO_sum.add(orb)
+            orbArray = torch.cat((orbArray,orb),1)
+            
+            #3py
+            orb = orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name='3py')
+            AO_sum = AO_sum.add(orb)
+            orbArray = torch.cat((orbArray,orb),1)
+            
+        if Z >= 19:
+            #4s
+            orb = orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name='4s')
+            AO_sum = AO_sum.add(orb)
+            orbArray = torch.cat((orbArray,orb),1)
+            
+        if Z >= 21:
+            #3dz2
+            orb = orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name='3dz2')
+            AO_sum = AO_sum.add(orb)
+            orbArray = torch.cat((orbArray,orb),1)
+            
+            #3dyz
+            orb = orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name='3dyz')
+            AO_sum = AO_sum.add(orb)
+            orbArray = torch.cat((orbArray,orb),1)
+            
+            #3dxz
+            orb = orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name='3dxz')
+            AO_sum = AO_sum.add(orb)
+            orbArray = torch.cat((orbArray,orb),1)
+            
+            #3dxy
+            orb = orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name='3dxy')
+            AO_sum = AO_sum.add(orb)
+            orbArray = torch.cat((orbArray,orb),1)
+            
+            #3dx2y2
+            orb = orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name='3dx2y2')
             AO_sum = AO_sum.add(orb)
             orbArray = torch.cat((orbArray,orb),1)
         
