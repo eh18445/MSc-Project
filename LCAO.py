@@ -24,6 +24,8 @@ import time
 from scipy.integrate import simps
 from torch.autograd import grad
 
+torch.autograd.set_detect_anomaly(True)
+
 font = {'size': 11}
 matplotlib.rc('font', **font)
 plt.rcParams['font.size'] = 12
@@ -100,7 +102,6 @@ def lapl(x,y,z,f):
     """
     Returns value of the laplacian operator at x,y,z for function f
     """
-
     f_xx, f_yy, f_zz = d2fx(x,f), d2fx(y,f), d2fx(z,f)
     return f_xx + f_yy + f_zz
 
@@ -110,6 +111,28 @@ def hamiltonian(x,y,z,R,psi,Z1,Z2):
     """
     laplacian = lapl(x,y,z,psi)    
     return  -0.5*laplacian + V(x,y,z,R,Z1,Z2)*psi
+
+def hamiltonian2(x,y,z,R,psi,Z1,Z2,k):
+    """
+    Returns Hamiltonian for this setup
+    """
+    laplacian = lapl2(x,y,z,psi,k)    
+    print('lap:',laplacian[k])
+    potential = V(x,y,z,R,Z1,Z2)
+    #print('V:',potential[k])
+    ham = -0.5*laplacian + potential*psi
+    
+    return ham
+
+def lapl2(x,y,z,f,k):
+    """
+    Returns value of the laplacian operator at x,y,z for function f
+    """
+    f_xx, f_yy, f_zz = d2fx(x,f), d2fx(y,f), d2fx(z,f)
+    print('f_xx:',f_xx[k])
+    print('f_yy:',f_yy[k])
+    print('f_zz:',f_zz[k])
+    return f_xx + f_yy + f_zz
 
 def atomicAct(polarVec,Z):
     """
@@ -314,24 +337,48 @@ def LCAO_Solution(x,y,z,R,chi,Z1,Z2):
     """
     time_start = time.time()
     
-    print(chi.shape)
+    print(chi[0,0],chi[0,1])
+    print('Values of chi that are the same:')
+    for i in range(chi.shape[0]):
+        #print(chi[i,0],chi[i,1])
+        if chi[i,0] == chi[i,1]:
+            print(i)
+    print('nan indexes:')
     
     #calculate H and S
     n_orbitals = chi.shape[1]
+    
     H = torch.zeros((n_orbitals,n_orbitals))
     S = torch.zeros((n_orbitals,n_orbitals))
     
     for i in range(0,n_orbitals):
         for j in range(i+1):
             #print(i,j)
-            print(chi[:,j])
             #######TYhis is supposed tpo be integrasated!!!!
             H_chi = hamiltonian(x,y,z,R,chi[:,j].reshape(-1,1),Z1,Z2)
-            print('<chi|:',chi[:,j])
-            print('H|chi>:',H_chi)
-            H[i,j] = torch.matmul(chi[:,j],H_chi)
+            
+            vec1 = chi[:,j]
+            vec2 = H_chi.reshape(-1)
+            
+            for k in range(len(vec1)):
+                if torch.isnan(vec2[k]) == True:
+                    print(i,j)
+                    print(k)
+                    print('|chi_j>:',vec1[k])
+                    #print(H|chi_j>:',vec2[k])
+                    print('x:',x[k])
+                    print('y:',y[k])
+                    print('z:',z[k])
+                    #print('R:',R[k])
+                    H_chi_test = hamiltonian2(x,y,z,R,chi[:,j].reshape(-1,1),Z1,Z2,k)
+                    #print('Ham:',H_chi_test[k])
+            
+            H[i,j] = torch.matmul(chi[:,i],H_chi)
             H[j,i] = H[i,j]
+            
             print('<chi|H|chi>',H[i,j])
+            
+            #<chi_i|chi_j>
             S[i,j] = torch.matmul(chi[:,i],chi[:,j].reshape(-1,1))
             S[i,j] = S[j,i]
     
@@ -355,10 +402,23 @@ Rz1 = 0
 Ry2 = 0
 Rz2 = 0
 
-x = torch.linspace(-10,10,10000,requires_grad=True)
-y = torch.linspace(-10,10,10000,requires_grad=True)
-z = torch.linspace(-10,10,10000,requires_grad=True)
-R = torch.linspace(0.2,4,10000,requires_grad=True)
+#x = torch.linspace(-10,10,10000,requires_grad=True)
+#y = torch.linspace(-10,10,10000,requires_grad=True)
+#z = torch.linspace(-10,10,10000,requires_grad=True)
+#R = torch.linspace(0.2,4,10000,requires_grad=True)
+
+#max and min x,y,z,R values
+boundaries = 18
+xL = -boundaries; xR = boundaries
+yL = -boundaries; yR = boundaries
+zL = -boundaries; zR = boundaries
+RxL = 0.2; RxR = 4
+
+n_points = 10000
+x = (xL - xR) * torch.rand(n_points,1) + xR
+y = (yL - yR) * torch.rand(n_points,1) + yR
+z = (zL - zR) * torch.rand(n_points,1) + zR
+R = (RxL - RxR)* torch.rand(n_points,1) + RxR
 
 #H
 Z1 = 1
@@ -366,7 +426,8 @@ Z1 = 1
 #O
 Z2 = 1
 
-x,y,z,R = x.reshape(-1,1), y.reshape(-1,1), z.reshape(-1,1),R.reshape(-1,1)
+x.requires_grad=True; y.requires_grad=True; z.requires_grad=True; R.requires_grad=True
+x,y,z,R = x.reshape(-1,1), y.reshape(-1,1), z.reshape(-1,1), R.reshape(-1,1)
 
 chi = atomicUnit(x,y,z,R,Ry1,Rz1,Z1,Z2)
 
@@ -376,8 +437,6 @@ print('c',c,'E',E)
 print(c[:,0],chi[:,0])
 
 #6 different solutions
-
-
 
 n_orbitals = chi.shape[1]
 for i in range(n_orbitals):

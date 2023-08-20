@@ -533,9 +533,9 @@ class NN_atom(nn.Module):
                 #print(orbArray[:,j].reshape(-1))
                 
                 ##############This is supposed to be integrated!!!!!!!!
+                
+                #H|chi_j>
                 H_chi = hamiltonian(x,y,z,R,orbArray[:,j].reshape(-1,1).real,params)
-                #print('<chi|',orbArray[457,j].real)
-                #print('H|chi>',H_chi[457])
                 
                 jam = torch.isnan(H_chi)
                 if True in jam:
@@ -552,8 +552,8 @@ class NN_atom(nn.Module):
                         #print('|chi>',orbArray[n,j].reshape(-1,1).real)
                         #print('H|chi>', nan_array[n], H_chi[nan_array[n]])
                 
-                H[i,j] = torch.matmul(orbArray[:,j].real,H_chi)
-                #print('<chi|H|chi>',H[i,j])
+                #<chi_i|H|chi_j>
+                H[i,j] = torch.matmul(orbArray[:,i].real,H_chi)
                 H[j,i] = H[i,j]
                 
                 S[i,j] = torch.matmul(orbArray[:,i].real,orbArray[:,j].reshape(-1,1).real)
@@ -689,12 +689,7 @@ def train(params,loadWeights=False,freezeUnits=False,optimiser='Adam'):
     n_points = params['n_train'] # the training batch size
     
     #Sample Inputs
-    x = torch.linspace(-10,10,10000,requires_grad=True)
-    y = torch.linspace(-10,10,10000,requires_grad=True)
-    z = torch.linspace(-10,10,10000,requires_grad=True)
-    R = torch.linspace(0.2,4,10000,requires_grad=True)
-    x=x.reshape((-1,1)); y=y.reshape((-1,1)); z=z.reshape((-1,1)); R=R.reshape((-1,1))
-    #x,y,z,R = sampling(params,n_points,linearSampling=False)
+    x,y,z,R = sampling(params,n_points,linearSampling=False)
     
     #r1,r2 = radial(x, y, z,R, params)
     #bIndex1 = torch.where(r1 >= params['BCcutoff'])
@@ -707,7 +702,7 @@ def train(params,loadWeights=False,freezeUnits=False,optimiser='Adam'):
         optimizer.zero_grad()
         
         if tt % params['sc_sampling'] == 0 and tt < 0.9*epochs:
-            #x,y,z,R = sampling(params, n_points, linearSampling=False)            
+            x,y,z,R = sampling(params, n_points, linearSampling=False)            
             r1,r2 = radial(x,y,z,R,params)
             bIndex1 = torch.where(r1 >= params['BCcutoff'])
             bIndex2 = torch.where(r2 >= params['BCcutoff'])        
