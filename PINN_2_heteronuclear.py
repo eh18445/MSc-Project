@@ -28,6 +28,9 @@ import pickle
 from scipy.integrate import simps
   
 import warnings
+
+torch.autograd.set_detect_anomaly(False)
+
 warnings.filterwarnings('ignore')
 
 dtype = torch.double    
@@ -112,7 +115,8 @@ class toTheta(torch.nn.Module):
 class toPhi(torch.nn.Module):
     @staticmethod
     def forward(input):
-        phi = torch.sgn(input[:,1])*torch.arccos(input[:,0]/(torch.pow(input[:,0],2)+torch.pow(input[:,1],2)))
+        #torch.sgn(input[:,1])*
+        phi = torch.arccos(input[:,0]/torch.sqrt(torch.pow(input[:,0],2)+torch.pow(input[:,1],2)))
         phi = phi.reshape(-1,1)
         return phi
 
@@ -181,6 +185,7 @@ class atomicAct(torch.nn.Module):
         
         #fill Z electron orbitals
         #Only works up to Z=30 currently
+        #returns nan values for 2px, 2py, 3px, 3py, 3dyz, 3dxz, 3dxy, 3dx2y2
         if Z > 0: 
             #1s
             orbArray = orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name='1s')
@@ -496,6 +501,13 @@ class NN_atom(nn.Module):
         
         orbArray = torch.cat((orbArray1,orbArray2),1)
         
+        #Check for nan values
+        for i in range(len(phi1)):
+            if torch.isnan(phi1[i]) == True or torch.isnan(phi2[i]):
+                print(i)
+                print('phi1 value:',phi1[i])
+                print('phi2 value:',phi2[i])
+        
         return fi_r1, fi_r2, orbArray
 
     def lcao_solution(self,fi_r1,fi_r2):
@@ -545,8 +557,8 @@ class NN_atom(nn.Module):
                         if jam[l] == True:
                             nan_array.append(l)
                             num_nan += 1
-                    print('{}{} contains {} nan values'.format(i,j,num_nan))
-                    print(nan_array)
+                    #print('{}{} contains {} nan values'.format(i,j,num_nan))
+                    #print(nan_array)
                     
                     #for n in range(len(nan_array)):
                         #print('|chi>',orbArray[n,j].reshape(-1,1).real)

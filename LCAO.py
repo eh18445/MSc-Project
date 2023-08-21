@@ -23,6 +23,8 @@ import matplotlib
 import time
 from scipy.integrate import simps
 from torch.autograd import grad
+#from lightning.pytorch.trainer.trainer import Trainer 
+#from lightning.pytorch.utilities import grad_norm
 
 torch.autograd.set_detect_anomaly(True)
 
@@ -318,6 +320,7 @@ def atomicUnit(x,y,z,R,Ry,Rz,Z1,Z2):
     #covert to polar co-ords
     r2 = toR(rVec2)
     theta2 = torch.arccos(z2/r2)
+    print(torch.arccos(x2/(torch.pow(x2,2)+torch.pow(y2,2))))
     phi2 = torch.sgn(y2)*torch.arccos(x2/(torch.pow(x2,2)+torch.pow(y2,2)))
     polarVec2 = torch.cat((r2,theta2,phi2),1)
     
@@ -336,14 +339,6 @@ def LCAO_Solution(x,y,z,R,chi,Z1,Z2):
     Return values of c and E
     """
     time_start = time.time()
-    
-    print(chi[0,0],chi[0,1])
-    print('Values of chi that are the same:')
-    for i in range(chi.shape[0]):
-        #print(chi[i,0],chi[i,1])
-        if chi[i,0] == chi[i,1]:
-            print(i)
-    print('nan indexes:')
     
     #calculate H and S
     n_orbitals = chi.shape[1]
