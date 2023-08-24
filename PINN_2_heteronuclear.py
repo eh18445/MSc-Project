@@ -87,12 +87,41 @@ def set_params():
     #number of protons in nucleus
     params['Z1'] = 1
     params['Z2'] = 8
-    #number of electrons
-    params['N_electrons'] = params['Z1'] + params['Z2']
+    
+    #number of orbitals
+    params['num_orbitals'] = num_orbitals(params['Z1']) + num_orbitals(params['Z2'])
+
+    
+    #Select which LCAO solution to use
+    params['c'] = 0
 
     params['inversion_symmetry'] = 1  
     
     return params
+
+def num_orbitals(Z):
+    #calcualtes the number of orbitals present
+    if Z >= 1 and Z < 3:
+        num_AO = 1
+    if Z >= 3 and Z < 5:
+        num_AO = 2
+    if Z >= 5 and Z < 11:
+        num_AO = 5
+    if Z >= 11 and Z < 13:
+        num_AO = 6
+    if Z >= 13 and Z < 19:
+        num_AO = 9
+    if Z >= 19 and Z < 21:
+        num_AO = 10
+    if Z >= 21 and Z < 31:
+        num_AO = 15
+    if Z >= 31 and Z < 37:
+        num_AO = 18
+    if Z >= 37:
+        raise ValueError("Input atomic number {} too large.".format(Z))
+        
+    return num_AO
+        
 
 ##################### ACTIVATION FUNCTIONS    
 class toR(torch.nn.Module):
@@ -187,6 +216,7 @@ class atomicAct(torch.nn.Module):
         #Only works up to Z=30 currently
         #returns nan values for 2px, 2py, 3px, 3py, 3dyz, 3dxz, 3dxy, 3dx2y2
         if Z > 0: 
+
             #1s
             orbArray = orbital(polarVec[:,0],polarVec[:,1],polarVec[:,2],Z,orbital_name='1s')
             AO_sum = AO_sum.add(orbArray)
@@ -415,7 +445,7 @@ class NN_atom(nn.Module):
         self.toTheta = toTheta()
         self.toPhi = toPhi()
         self.actAO = atomicAct()  
-        self.Lin_H1 = torch.nn.Linear(2, dense_neurons) 
+        self.Lin_H1 = torch.nn.Linear(params['num_orbitals'], dense_neurons) 
         self.Lin_H2 = torch.nn.Linear(dense_neurons, dense_neurons, bias=True) 
         
         self.Lin_out = torch.nn.Linear(dense_neurons, 1)                
@@ -430,6 +460,7 @@ class NN_atom(nn.Module):
         self.Rz = params['Rz']
         self.Z1 = params['Z1']
         self.Z2 = params['Z2']
+        self.c = params['c']
         self.P = params['inversion_symmetry']
         self.netDecayL = torch.nn.Linear(1, netDecay_neurons, bias=True)  
         self.netDecay = torch.nn.Linear(netDecay_neurons, 1, bias=True)  
@@ -455,8 +486,8 @@ class NN_atom(nn.Module):
         #print(N_LCAO.shape)
         
         ## NONLINEAR HIDDEN LAYERS        
-        B  = self.base(fi_r1,fi_r2) + self.P*self.base(fi_r1m,fi_r2m)
-        #B  = self.base2(fi_r1,fi_r2) + self.P*self.base2(fi_r1m,fi_r2m)
+        #B  = self.base(fi_r1,fi_r2) + self.P*self.base(fi_r1m,fi_r2m)
+        B  = self.base2(orbArray) + self.P*self.base2(orbArraym)
         NN = self.Lin_out(B)
     
         f = self.netDecayL(R)
@@ -531,8 +562,6 @@ class NN_atom(nn.Module):
         Solve S^-1*H*c = E*c eigen equation
         Return values of c and E
         """
-        print(x[0])
-        
         #calculate H and S
         n_orbitals = orbArray.shape[1]
         H = torch.zeros((n_orbitals,n_orbitals))
@@ -541,10 +570,6 @@ class NN_atom(nn.Module):
         for i in range(0,n_orbitals):
             for j in range(i+1):
                 #print(i,j)
-                #print(orbArray[:,j])
-                #print(orbArray[:,j].reshape(-1))
-                
-                ##############This is supposed to be integrated!!!!!!!!
                 
                 #H|chi_j>
                 H_chi = hamiltonian(x,y,z,R,orbArray[:,j].reshape(-1,1).real,params)
@@ -557,12 +582,6 @@ class NN_atom(nn.Module):
                         if jam[l] == True:
                             nan_array.append(l)
                             num_nan += 1
-                    #print('{}{} contains {} nan values'.format(i,j,num_nan))
-                    #print(nan_array)
-                    
-                    #for n in range(len(nan_array)):
-                        #print('|chi>',orbArray[n,j].reshape(-1,1).real)
-                        #print('H|chi>', nan_array[n], H_chi[nan_array[n]])
                 
                 #<chi_i|H|chi_j>
                 H[i,j] = torch.matmul(orbArray[:,i].real,H_chi)
@@ -572,8 +591,8 @@ class NN_atom(nn.Module):
                 S[i,j] = S[j,i]
         
         #Solve eigen equation
-        print(H)
-        print(S)
+        #print(H)
+        #print(S)
         S_inv = torch.linalg.inv(S)
         S_inv_H = torch.matmul(S_inv,H)
         
@@ -581,10 +600,10 @@ class NN_atom(nn.Module):
         E, c = torch.linalg.eig(S_inv_H)
         
         #Now perform linear sum
-        print(E.shape,c.shape,orbArray.shape)
-        lcao = torch.mul(c[0],orbArray[:,0])
-        for i in range(1,n_orbitals):
-            lcao = torch.add(lcao,torch.mul(c[i],orbArray[:,i]))
+        #print(E.shape,c.shape,orbArray.shape)
+        lcao = torch.mul(c[0,self.c],orbArray[:,0].reshape(-1,1))
+        for i in range(1,self.c):
+            lcao = torch.add(torch.mul(c[i,self.c],orbArray[:,i].reshape(-1,1)))    
         
         return lcao
     
@@ -608,9 +627,13 @@ class NN_atom(nn.Module):
         #take only the real part of atomic units
         orbArray = orbArray.real
         
-        orbArray = self.Lin_H1(orbArray);         orbArray = self.sig(orbArray) 
-        orbArray = self.Lin_H2(orbArray);         orbArray = self.sig(orbArray) 
+        orbArray = self.Lin_H1(orbArray)         
+        orbArray = self.sig(orbArray) 
+        orbArray = self.Lin_H2(orbArray)         
+        orbArray = self.sig(orbArray) 
+        
         #orbArray = self.Lin_H3(orbArray);         orbArray = self.sig(orbArray) 
+        
         return orbArray
         
     def freezeBase(self):
@@ -650,7 +673,9 @@ class NN_atom(nn.Module):
         lam_bc, lam_pde = 1 , 1    #lam_tr = 1e-9
         psi, E, orbArray = self.parametricPsi(x,y,z,R)
         #--# PDE       
-        res = hamiltonian(x,y,z,R,psi,orbArray,params) - E*psi                
+        psi = psi.real
+        psi = psi.to(torch.float64)     
+        res = hamiltonian(x,y,z,R,psi,params) - E*psi                
         LossPDE = (res.pow(2)).mean() * lam_pde
         Ltot = LossPDE         
         #--# BC
@@ -757,11 +782,12 @@ params = set_params()
 
 params['epochs'] = int(5e3) 
 nEpoch1 = params['epochs']
-params['n_train'] = 10000
+params['n_train'] = 1000
 params['lr'] = 8e-3
 params['Z1'] = 1
 params['Z2'] = 8
-params['N_electrons'] = params['Z1'] + params['Z2']
+params['num_orbitals'] = num_orbitals(params['Z1']) + num_orbitals(params['Z2'])
+params['c'] = 0
 
 #################
 model = NN_atom(params)

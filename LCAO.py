@@ -304,7 +304,7 @@ def atomicUnit(x,y,z,R,Ry,Rz,Z1,Z2):
     #covert to polar co-ords
     r1 = toR(rVec1)
     theta1 = torch.arccos(z1/r1)
-    phi1 = torch.sgn(y1)*torch.arccos(x1/(torch.pow(x1,2)+torch.pow(y1,2)))
+    phi1 = torch.sgn(y1)*torch.arccos(x1/torch.sqrt(torch.pow(x1,2)+torch.pow(y1,2)))
     polarVec1 = torch.cat((r1,theta1,phi1),1)
     
     #for each relevant orbital calculate phi vector
@@ -321,7 +321,7 @@ def atomicUnit(x,y,z,R,Ry,Rz,Z1,Z2):
     r2 = toR(rVec2)
     theta2 = torch.arccos(z2/r2)
     print(torch.arccos(x2/(torch.pow(x2,2)+torch.pow(y2,2))))
-    phi2 = torch.sgn(y2)*torch.arccos(x2/(torch.pow(x2,2)+torch.pow(y2,2)))
+    phi2 = torch.sgn(y2)*torch.arccos(x2/torch.sqrt(torch.pow(x2,2)+torch.pow(y2,2)))
     polarVec2 = torch.cat((r2,theta2,phi2),1)
     
     fi_r2, orbArray2 = atomicAct(polarVec2,Z2) 

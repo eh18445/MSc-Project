@@ -285,7 +285,7 @@ class NN_ion(nn.Module):
     
     def base(self,fi_r1,fi_r2):
         ## NONLINEAR HIDDEN LAYERS; Black box
-        fi_r = torch.cat((fi_r1, fi_r2),1)    
+        fi_r = torch.cat((fi_r1, fi_r2),1) 
         fi_r = self.Lin_H1(fi_r);         fi_r = self.sig(fi_r) 
         fi_r = self.Lin_H2(fi_r);         fi_r = self.sig(fi_r) 
         # fi_r = self.Lin_H3(fi_r);         fi_r = self.sig(fi_r) 
