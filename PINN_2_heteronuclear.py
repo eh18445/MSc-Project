@@ -6,9 +6,9 @@ Created on Thu Aug  3 16:36:48 2023
 """
 
 ######################
-#first calculate the coefficients for the LCAO approx
-
-#Adapt so it functions for 2 different atom inputs
+# Either:
+    #select which orbital is being used in the loss function
+    #Find a way to include all orbitals in the loss function
 
 import numpy as np
 import torch
