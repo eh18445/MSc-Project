@@ -776,7 +776,7 @@ nEpoch1 = params['epochs']
 params['n_train'] = 1000
 params['lr'] = 8e-3
 params['Z1'] = 1
-params['Z2'] = 8
+params['Z2'] = 1
 params['num_orbitals'] = num_orbitals(params['Z1']) + num_orbitals(params['Z2'])
 params['c'] = 0
 
