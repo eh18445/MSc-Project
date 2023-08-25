@@ -574,15 +574,6 @@ class NN_atom(nn.Module):
                 #H|chi_j>
                 H_chi = hamiltonian(x,y,z,R,orbArray[:,j].reshape(-1,1).real,params)
                 
-                jam = torch.isnan(H_chi)
-                if True in jam:
-                    nan_array = []
-                    num_nan = 0
-                    for l in range(len(jam)):
-                        if jam[l] == True:
-                            nan_array.append(l)
-                            num_nan += 1
-                
                 #<chi_i|H|chi_j>
                 H[i,j] = torch.matmul(orbArray[:,i].real,H_chi)
                 H[j,i] = H[i,j]
