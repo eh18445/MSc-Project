@@ -1,14 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-Created on Thu Aug  3 16:36:48 2023
+Created on Sat Aug 26 14:31:12 2023
 
 @author: danie
 """
 
-######################
-# Either:
-    #select which orbital is being used in the loss function
-    #calculate c values at begining
+#Aim: change for 3 atoms
 
 import numpy as np
 import torch
@@ -67,14 +64,16 @@ def set_params():
     params['zL'] = -boundaries; params['zR'] = boundaries
     params['BCcutoff'] = 17.5
 
-    params['RxL'] = 0.2; params['RxR']= 4
-    params['Ry']= 0 ; params['Rz']= 0  
+    params['RxL'] = 0.2; params['RxR']= 8
     
-    params['cutOff']= 0.005
+    params['angle1'] = 0
+    params['angle2'] = 0
+    
+    params['cutOff'] = 0.005
     params['lossPath'] = "data/loss_atom.pkl" ; 
     params['EnergyPath'] = "data/energy_atom.pkl" ; 
     params['saveModelPath'] = "models/atomsym.pt"
-    params['loadModelPath']="models/atomsym.pt"
+    params['loadModelPath'] ="models/atomsym.pt"
     params['EnrR_path'] = "data/energy_R_atom.pkl"
        
     params['sc_step'] = 3000; params['sc_decay']=.7 ## WAS 3000
@@ -86,7 +85,8 @@ def set_params():
     
     #number of protons in nucleus
     params['Z1'] = 1
-    params['Z2'] = 8
+    params['Z2'] = 1
+    params['Z3'] = 1
     
     #number of orbitals
     params['num_orbitals'] = num_orbitals(params['Z1']) + num_orbitals(params['Z2'])
@@ -327,13 +327,23 @@ def radial(x,y,z,R,params):
     """
     Returns the radial part from cartesian coordinates
     """
-    Rx = R
-    Ry = params['Ry']
-    Rz = params['Rz']
-    r1 = torch.sqrt((x-Rx).pow(2)+(y-Ry).pow(2)+(z-Rz).pow(2))
-    r2 = torch.sqrt((x+Rx).pow(2)+(y+Ry).pow(2)+(z+Rz).pow(2))
+    R1x = torch.mul(R[:,0],torch.cos(torch.tensor(params['angle1'])))
+    R1y = torch.mul(R[:,0],torch.sin(torch.tensor(params['angle1'])))
+    R1z = 0
     
-    return r1, r2
+    R2x = torch.mul(R[:,1],torch.cos(torch.tensor(params['angle2'])))
+    R2y = torch.mul(R[:,1],torch.sin(torch.tensor(params['angle2'])))
+    R2z = 0
+    
+    R3x = 0
+    R3y = 0
+    R3z = 0
+    
+    r1 = torch.sqrt((x+R1x).pow(2)+(y-R1y).pow(2)+(z-R1z).pow(2))
+    r2 = torch.sqrt((x-R2x).pow(2)+(y-R2y).pow(2)+(z+R2z).pow(2))
+    r3 = torch.sqrt((x+R3x).pow(2)+(y+R3y).pow(2)+(z+R3z).pow(2))
+    
+    return r1, r2, r3
 
 def V(x,y,z,R,params):
     """
@@ -341,7 +351,7 @@ def V(x,y,z,R,params):
     For each electron calculate coulomb potential from all other electrons
     """
     #positions of each atom
-    r1,r2 = radial(x,y,z,R,params)
+    r1,r2,r3 = radial(x,y,z,R,params)
     
     #effective nuclear charge
     eff_charge = {1:1, 2:1.688, 3:1.279, 4:1.912, 5:2.421, 6:3.136, 7:3.834, 8:4.453, 9:5.1, 10:5.758,
@@ -350,8 +360,9 @@ def V(x,y,z,R,params):
     
     Z1_eff = eff_charge[params['Z1']]
     Z2_eff = eff_charge[params['Z2']]
+    Z3_eff = eff_charge[params['Z3']]
     
-    potential = -Z1_eff/r1 -Z2_eff/r2
+    potential = -Z1_eff/r1 -Z2_eff/r2 -Z3_eff/r3
     
     return potential
     
@@ -365,7 +376,7 @@ def hamiltonian(x,y,z,R,psi,params):
 ## Misc helper functions 
 
 def sampling(params, n_points, linearSampling=False):
-    # Sampling from a 4d space: 3d variable (x,y,z) and 1d parameter (R) space
+    # Sampling from a 4d space: 3d variable (x,y,z) and 2d parameter (R) space
     xR = params['xR']; xL = params['xL']; yR = params['yR'];
     yL = params['yL']; zR = params['zR']; zL = params['zL']; 
     cutOff = params['cutOff']
@@ -374,12 +385,16 @@ def sampling(params, n_points, linearSampling=False):
         x = torch.linspace(xL,xR,n_points,requires_grad=False)
         y = torch.linspace(yL,yR,n_points,requires_grad=False)
         z = torch.linspace(zL,zR,n_points,requires_grad=False)
-        R = torch.linspace(params['RxL'],params['RxR'],n_points,requires_grad=False)
+        R = torch.zeros((2,n_points))
+        R[0,:] = torch.linspace(params['RxL'],params['RxR'],n_points,requires_grad=False)
+        R[1,:] = torch.linspace(params['RxL'],params['RxR'],n_points,requires_grad=False)
     else: 
         x = (xL - xR) * torch.rand(n_points,1) + xR
         y = (yL - yR) * torch.rand(n_points,1) + yR
         z = (zL - zR) * torch.rand(n_points,1) + zR
-        R = (params['RxL'] - params['RxR'])* torch.rand(n_points,1) + params['RxR']
+        R = torch.zeros((2,n_points))
+        R[0,:] = (params['RxL'] - params['RxR'])* torch.rand(n_points,1) + params['RxR']
+        R[1,:] = (params['RxL'] - params['RxR'])* torch.rand(n_points,1) + params['RxR']
         
     #r1,r2 = radial(x,y,z,R,params)
     #x[r1<cutOff] = cutOff
@@ -492,10 +507,10 @@ class NN_atom(nn.Module):
         self.Lin_Eout = torch.nn.Linear(dense_neurons_E, 1)                
         nn.init.constant_(self.Lin_Eout.bias[0], -1) 
 
-        self.Ry = params['Ry'] 
-        self.Rz = params['Rz']
         self.Z1 = params['Z1']
         self.Z2 = params['Z2']
+        self.Z3 = params['Z3']
+        
         self.c_i = params['c_i']
         self.P = params['inversion_symmetry']
         self.netDecayL = torch.nn.Linear(1, netDecay_neurons, bias=True)  
@@ -533,10 +548,13 @@ class NN_atom(nn.Module):
         Takes the 2 inputs r and R.
         Returns the hydrogen atomic s-orbitals for each ion.
         """
-        # Cartesian Translation & Scaling: 
-        x1 = x - R
-        y1 = y - self.Ry 
-        z1 = z - self.Rz        
+        # Atom 1        
+        R1x = torch.mul(R[:,0],torch.cos(torch.tensor(params['angle1'])))
+        R1y = torch.mul(R[:,0],torch.sin(torch.tensor(params['angle1'])))
+        
+        x1 = x + R1x
+        y1 = y - R1y
+        z1 = z         
         rVec1 = torch.cat((x1,y1,z1),1)
         
         #parameters for orbital
@@ -548,9 +566,14 @@ class NN_atom(nn.Module):
         # ATOMIC ORBITAL ACTIVATION
         fi_r1, orbArray1 = self.actAO(polarVec1,self.Z1) 
 
-        # -- 
-        x2 = x + R; 
-        y2 = y + self.Ry; z2 = z + self.Rz        
+        # Atom 2
+        #position of atom
+        R2x = torch.mul(R[:,1],torch.cos(torch.tensor(params['angle2'])))
+        R2y = torch.mul(R[:,1],torch.sin(torch.tensor(params['angle2'])))
+        
+        x2 = x - R2x
+        y2 = y - R2y
+        z2 = z
         rVec2 = torch.cat((x2,y2,z2),1)
         
         r2 = self.toR(rVec2)         
@@ -560,7 +583,22 @@ class NN_atom(nn.Module):
         
         fi_r2, orbArray2 = self.actAO(polarVec2,self.Z2)
         
+        #Atom 3
+        x3 = x
+        y3 = y
+        z3 = z    
+        rVec3 = torch.cat((x3,y3,z3),1)
+        
+        r3 = self.toR(rVec3)         
+        theta3 = self.toTheta(rVec3)
+        phi3 = self.toPhi(rVec3)
+        polarVec3 = torch.cat((r3,theta3,phi3),1)
+        
+        fi_r3, orbArray3 = self.actAO(polarVec3,self.Z3)
+        
+        #cancat arrays
         orbArray = torch.cat((orbArray1,orbArray2),1)
+        orbArray = torch.cat((orbArray,orbArray3),1)
         
         #Check for nan values
         for i in range(len(phi1)):
@@ -704,7 +742,7 @@ def train(params,loadWeights=False,freezeUnits=False,optimiser='Adam'):
         optimizer.zero_grad()
         
         if tt == 0:
-            #calc c?
+            #calc c
             _, _, orbArray = model.atomicUnit(x,y,z,R)
             _, c = calculate_LCAO_constants(x,y,z,R,orbArray)
             c = c[:,params['c_i']]
@@ -792,3 +830,5 @@ params['lr'] = 5e-4;
 #train(params, loadWeights=True, freezeUnits=True); 
 
 #plotLoss(params, saveFig=False)
+
+
