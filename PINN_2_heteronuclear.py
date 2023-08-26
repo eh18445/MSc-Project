@@ -385,7 +385,7 @@ def sampling(params, n_points, linearSampling=False):
     #x[r1<cutOff] = cutOff
     #x[r2<cutOff] = cutOff
     x,y,z = x.reshape(-1,1), y.reshape(-1,1), z.reshape(-1,1); R=R.reshape(-1,1)        
-    x.requires_grad=True; y.requires_grad=True; z.requires_grad=True; R.requires_grad=True     
+    x.requires_grad = True; y.requires_grad = True; z.requires_grad = True; R.requires_grad = True     
     return x,y,z,R
 
 def saveLoss(params,lossDictionary):
@@ -581,8 +581,7 @@ class NN_atom(nn.Module):
         n_orbitals = orbArray.shape[1]
         lcao = torch.mul(c[0],orbArray[:,0].reshape(-1,1))
         for i in range(1,n_orbitals):
-            lcao = torch.add(torch.mul(c[i],orbArray[:,i].reshape(-1,1)))    
-        
+            lcao = torch.add(lcao,torch.mul(c[i],orbArray[:,i].reshape(-1,1)))    
         return lcao
     
     def base(self,orbArray):
@@ -704,11 +703,12 @@ def train(params,loadWeights=False,freezeUnits=False,optimiser='Adam'):
         optimizer.zero_grad()
         
         if tt == 0:
-            #calc c?
+            #calc c
             _, _, orbArray = model.atomicUnit(x,y,z,R)
             _, c = calculate_LCAO_constants(x,y,z,R,orbArray)
             c = c[:,params['c_i']]
-            c = c.reshape((-1,-1))
+            c = c.reshape((-1,1))
+            c = c.detach()
         
         if tt % params['sc_sampling'] == 0 and tt < 0.9*epochs:
             x,y,z,R = sampling(params, n_points, linearSampling=False)            
@@ -718,7 +718,8 @@ def train(params,loadWeights=False,freezeUnits=False,optimiser='Adam'):
         
         Ltot, LossPDE, Lbc, E = model.LossFunctions(x,y,z,R,params,bIndex1,bIndex2,c)
         
-        Ltot.backward(retain_graph=False); optimizer.step(); 
+        Ltot.backward(retain_graph=False)
+        optimizer.step()
         # if  tt < 2001:
         #     scheduler.step()
         
@@ -749,6 +750,8 @@ def train(params,loadWeights=False,freezeUnits=False,optimiser='Adam'):
     print('Runtime (min): ', runTime/60)    
     print('last learning rate: ', scheduler.get_last_lr())
     # return E,R
+    
+print(time.strftime("%Y-%m-%d %H:%M:%S",time.gmtime()))
     
 params = set_params()
 

@@ -89,7 +89,7 @@ def set_params():
     params['Z3'] = 1
     
     #number of orbitals
-    params['num_orbitals'] = num_orbitals(params['Z1']) + num_orbitals(params['Z2'])
+    params['num_orbitals'] = num_orbitals(params['Z1']) + num_orbitals(params['Z2']) + num_orbitals(params['Z3'])
 
     
     #Select which LCAO solution to use
@@ -702,7 +702,7 @@ def train(params,loadWeights=False,freezeUnits=False,optimiser='Adam'):
         optimizer = optim.SGD(model.parameters(), lr=lr, momentum=0.5)
         print('Train with SGD')
     
-    print('Setup is 2 atoms with atomic numbers {} and {}.'.format(params['Z1'],params['Z2']))
+    print('Setup is 3 atoms with atomic numbers {}, {}, and {}.'.format(params['Z1'],params['Z2'],params['Z3']))
     
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer,step_size=params['sc_step'],gamma=params['sc_decay'])    
     Llim =  10 ; optEpoch=0    
@@ -746,7 +746,8 @@ def train(params,loadWeights=False,freezeUnits=False,optimiser='Adam'):
             _, _, orbArray = model.atomicUnit(x,y,z,R)
             _, c = calculate_LCAO_constants(x,y,z,R,orbArray)
             c = c[:,params['c_i']]
-            c = c.reshape((-1,-1))
+            c = c.reshape((-1,1))
+            c = c.detach()
         
         if tt % params['sc_sampling'] == 0 and tt < 0.9*epochs:
             x,y,z,R = sampling(params, n_points, linearSampling=False)            
