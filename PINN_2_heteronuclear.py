@@ -342,6 +342,7 @@ def V(x,y,z,R,params):
     """
     #positions of each atom
     r1,r2 = radial(x,y,z,R,params)
+    print(r1.shape,r2.shape)
     
     #effective nuclear charge
     eff_charge = {1:1, 2:1.688, 3:1.279, 4:1.912, 5:2.421, 6:3.136, 7:3.834, 8:4.453, 9:5.1, 10:5.758,

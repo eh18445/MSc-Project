@@ -335,6 +335,8 @@ def radial(x,y,z,R,params):
     R2y = torch.mul(R[:,1],torch.sin(torch.tensor(params['angle2'])))
     R2z = 0
     
+    R1x=R1x.reshape(-1,1); R1y=R1y.reshape(-1,1); R2x=R2x.reshape(-1,1); R2y=R2y.reshape(-1,1)
+    
     R3x = 0
     R3y = 0
     R3z = 0
@@ -352,7 +354,6 @@ def V(x,y,z,R,params):
     """
     #positions of each atom
     r1,r2,r3 = radial(x,y,z,R,params)
-    
     #effective nuclear charge
     eff_charge = {1:1, 2:1.688, 3:1.279, 4:1.912, 5:2.421, 6:3.136, 7:3.834, 8:4.453, 9:5.1, 10:5.758,
                   11:2.507, 12:3.308, 13:4.066, 14:4.285, 15:4.886, 16:5.482, 17:6.116, 18:6.764, 19:3.495, 20:4.398,
@@ -385,22 +386,22 @@ def sampling(params, n_points, linearSampling=False):
         x = torch.linspace(xL,xR,n_points,requires_grad=False)
         y = torch.linspace(yL,yR,n_points,requires_grad=False)
         z = torch.linspace(zL,zR,n_points,requires_grad=False)
-        R = torch.zeros((2,n_points))
-        R[0,:] = torch.linspace(params['RxL'],params['RxR'],n_points,requires_grad=False)
-        R[1,:] = torch.linspace(params['RxL'],params['RxR'],n_points,requires_grad=False)
+        R1 = torch.linspace(params['RxL'],params['RxR'],n_points,requires_grad=False).reshape(-1,1)
+        R2 = torch.linspace(params['RxL'],params['RxR'],n_points,requires_grad=False).reshape(-1,1)
+        R = torch.cat((R1,R2),1)
     else: 
         x = (xL - xR) * torch.rand(n_points,1) + xR
         y = (yL - yR) * torch.rand(n_points,1) + yR
         z = (zL - zR) * torch.rand(n_points,1) + zR
-        R = torch.zeros((2,n_points))
-        R[0,:] = (params['RxL'] - params['RxR'])* torch.rand(n_points,1) + params['RxR']
-        R[1,:] = (params['RxL'] - params['RxR'])* torch.rand(n_points,1) + params['RxR']
+        R1 = (params['RxL'] - params['RxR'])* torch.rand(n_points,1) + params['RxR']
+        R2 = (params['RxL'] - params['RxR'])* torch.rand(n_points,1) + params['RxR']
+        R = torch.cat((R1,R2),1)
         
     #r1,r2 = radial(x,y,z,R,params)
     #x[r1<cutOff] = cutOff
     #x[r2<cutOff] = cutOff
-    x,y,z = x.reshape(-1,1), y.reshape(-1,1), z.reshape(-1,1); R=R.reshape(-1,1)        
-    x.requires_grad=True; y.requires_grad=True; z.requires_grad=True; R.requires_grad=True     
+    x,y,z = x.reshape(-1,1), y.reshape(-1,1), z.reshape(-1,1)
+    x.requires_grad=True; y.requires_grad=True; z.requires_grad=True; R.requires_grad=True
     return x,y,z,R
 
 def saveLoss(params,lossDictionary):
@@ -501,7 +502,7 @@ class NN_atom(nn.Module):
         
         self.Lin_out = torch.nn.Linear(dense_neurons, 1)                
         
-        self.Lin_E1 = torch.nn.Linear(1, dense_neurons_E) 
+        self.Lin_E1 = torch.nn.Linear(2, dense_neurons_E) 
         self.Lin_E2 = torch.nn.Linear(dense_neurons_E, dense_neurons_E) 
 
         self.Lin_Eout = torch.nn.Linear(dense_neurons_E, 1)                
@@ -513,7 +514,7 @@ class NN_atom(nn.Module):
         
         self.c_i = params['c_i']
         self.P = params['inversion_symmetry']
-        self.netDecayL = torch.nn.Linear(1, netDecay_neurons, bias=True)  
+        self.netDecayL = torch.nn.Linear(2, netDecay_neurons, bias=True)  
         self.netDecay = torch.nn.Linear(netDecay_neurons, 1, bias=True)  
 
     def forward(self,x,y,z,R,c):        
@@ -619,7 +620,7 @@ class NN_atom(nn.Module):
         n_orbitals = orbArray.shape[1]
         lcao = torch.mul(c[0],orbArray[:,0].reshape(-1,1))
         for i in range(1,n_orbitals):
-            lcao = torch.add(torch.mul(c[i],orbArray[:,i].reshape(-1,1)))    
+            lcao = torch.add(lcao,torch.mul(c[i],orbArray[:,i].reshape(-1,1)))    
         
         return lcao
     
@@ -672,7 +673,7 @@ class NN_atom(nn.Module):
             # 'loss': loss
         },  params['saveModelPath'])   
         
-    def LossFunctions(self,x,y,z,R,params,bIndex1,bIndex2,c):
+    def LossFunctions(self,x,y,z,R,params,bIndex1,bIndex2,bIndex3,c):
         lam_bc, lam_pde = 1 , 1    #lam_tr = 1e-9
         psi, E, orbArray = self.parametricPsi(x,y,z,R,c)
         #--# PDE       
@@ -683,7 +684,8 @@ class NN_atom(nn.Module):
         Ltot = LossPDE         
         #--# BC
         Lbc =  lam_bc *( (psi[bIndex1].pow(2)).mean() 
-               + (psi[bIndex2].pow(2)).mean() )
+               + (psi[bIndex2].pow(2)).mean()
+               + (psi[bIndex3].pow(2)).mean())
 
         Ltot = LossPDE + Lbc
         # 
@@ -725,6 +727,7 @@ def train(params,loadWeights=False,freezeUnits=False,optimiser='Adam'):
         model.freezeBase()
         
     TeP0 = time.time() # for counting the training time
+    print(time.strftime("%Y-%m-%d %H:%M:%S",time.gmtime()))
         
     n_points = params['n_train'] # the training batch size
     
@@ -751,11 +754,12 @@ def train(params,loadWeights=False,freezeUnits=False,optimiser='Adam'):
         
         if tt % params['sc_sampling'] == 0 and tt < 0.9*epochs:
             x,y,z,R = sampling(params, n_points, linearSampling=False)            
-            r1,r2 = radial(x,y,z,R,params)
+            r1,r2,r3 = radial(x,y,z,R,params)
             bIndex1 = torch.where(r1 >= params['BCcutoff'])
-            bIndex2 = torch.where(r2 >= params['BCcutoff'])        
+            bIndex2 = torch.where(r2 >= params['BCcutoff'])
+            bIndex3 = torch.where(r3 >= params['BCcutoff'])
         
-        Ltot, LossPDE, Lbc, E = model.LossFunctions(x,y,z,R,params,bIndex1,bIndex2,c)
+        Ltot, LossPDE, Lbc, E = model.LossFunctions(x,y,z,R,params,bIndex1,bIndex2,bIndex3,c)
         
         Ltot.backward(retain_graph=False); optimizer.step(); 
         # if  tt < 2001:
@@ -763,6 +767,9 @@ def train(params,loadWeights=False,freezeUnits=False,optimiser='Adam'):
         
         if (tt+1)%100 == 0:
             print(f'epoch {tt+1}/{epochs}')
+            if (tt+1) == 100:
+                compute_time = (time.time()-TeP0)*params['epochs']
+                print('Estimate compute time (mins): {}'.format(compute_time/60))
 
         # keep history           
         Ltot_h[tt] = Ltot.cpu().data.numpy();  Lpde_h[tt] = LossPDE.cpu().data.numpy()
@@ -795,15 +802,11 @@ params['epochs'] = int(5e3)
 nEpoch1 = params['epochs']
 params['n_train'] = 1000
 params['lr'] = 8e-3
-params['Z1'] = 1
-params['Z2'] = 1
-params['num_orbitals'] = num_orbitals(params['Z1']) + num_orbitals(params['Z2'])
+params['Z1'] = 8
+params['Z2'] = 6
+params['Z3'] = 8
+params['num_orbitals'] = num_orbitals(params['Z1']) + num_orbitals(params['Z2']) + num_orbitals(params['Z3'])
 params['c_i'] = 0
-
-#################
-model = NN_atom(params)
-
-#################
 
 #### ----- Training: Single model ---=---------
 train(params,loadWeights=False)
@@ -812,24 +815,5 @@ train(params,loadWeights=False)
 
 Rg, gate = returnGate()
 #plt.plot(Rg, gate, linewidth=lineW)
-
-#### ----- Fine Tuning ----------
-
-# params=set_params()
-params['loadModelPath'] = "models/atomsym.pt"
-params['lossPath'] = "data/loss_atom_fineTune.pkl" ; 
-params['EnergyPath'] = "data/energy_atom_fineTune.pkl" ; 
-params['saveModelPath'] ="models/atom_fineTune.pt"
-
-# params['sc_step'] = 10000; params['sc_decay']=.7
-params['sc_sampling'] = 1
-
-params['epochs'] = int(2e3); nEpoch2 = params['epochs']
-params['n_train'] = 100000 
-params['lr'] = 5e-4;
-
-#train(params, loadWeights=True, freezeUnits=True); 
-
-#plotLoss(params, saveFig=False)
 
 
